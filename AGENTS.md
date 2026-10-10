@@ -23,7 +23,7 @@ Opificia is an open-source software factory: agents turn tickets into reviewed, 
 ## Rules
 
 1. **Sign-off is human-only.** Never add a `Signed-off-by` line yourself, and never run `git commit -s` on behalf of a person. The human who submits the change signs off.
-2. **Disclose yourself.** Add an `Assisted-by: <tool>/<model>` trailer to every commit you write or substantially change.
+2. **Disclose yourself.** Add an `Assisted-by: <tool>/<model>` trailer to every commit you write or substantially change. That trailer is the only way AI tools are disclosed: never add a `Co-authored-by` trailer for an AI tool or model, and never add "generated with" lines to commits or pull requests. `Co-authored-by` is for people.
 3. **Never commit secrets.** No tokens, keys, passwords or private URLs, not even in examples or tests. Use obvious placeholders.
 4. **Respect folder licences.** The core is AGPL-3.0-only; `sdk/`, `plugins/` and `examples/` are Apache-2.0; `docs/` is CC-BY-4.0. Do not move code between them, and do not add code copied from elsewhere unless its licence is compatible and recorded.
 5. **No new dependencies without an ADR.** This includes packages, GitHub Actions, container images and external services.
