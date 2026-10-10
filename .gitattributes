@@ -1,0 +1,6 @@
+# Normalise line endings to LF for all text files.
+* text=auto eol=lf
+
+# Logos are kept byte for byte as published in the brand book.
+*.svg -text
+*.png binary
