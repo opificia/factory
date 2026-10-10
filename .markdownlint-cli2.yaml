@@ -1,0 +1,4 @@
+# Files markdownlint does not check.
+ignores:
+  # Copied verbatim from the Contributor Covenant 3.0; we do not restyle it.
+  - "CODE_OF_CONDUCT.md"

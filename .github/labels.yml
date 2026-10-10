@@ -1,0 +1,69 @@
+# Labels for this repository, synced by .github/workflows/labels.yml on every
+# push to main. Labels not listed here are removed. Meanings are explained in
+# docs/community/triage.md.
+#
+# Colours follow the Opificia AI brand book: navy, slate and mist tones for
+# most labels. Gold (F2B705) is reserved for "good first issue", the
+# contributor's twelfth tooth.
+
+# Type: what kind of work this is.
+- name: "type/bug"
+  color: "10194A"
+  description: "Something does not work as documented"
+- name: "type/feature"
+  color: "10194A"
+  description: "A new capability or an improvement"
+- name: "type/docs"
+  color: "10194A"
+  description: "Documentation only"
+- name: "type/chore"
+  color: "10194A"
+  description: "Maintenance: tooling, CI, repository settings"
+
+# Area: which part of the project. Placeholders until the architecture exists.
+- name: "area/governance"
+  color: "4A5275"
+  description: "Governance, policies and community processes"
+- name: "area/ci"
+  color: "4A5275"
+  description: "Workflows and repository hygiene checks"
+- name: "area/brand"
+  color: "4A5275"
+  description: "Name, logo and trademark use"
+- name: "area/core"
+  color: "4A5275"
+  description: "The core platform (placeholder until the architecture is decided)"
+- name: "area/sdk"
+  color: "4A5275"
+  description: "The SDK and plugin interfaces (placeholder)"
+
+# Status: where the work stands.
+- name: "status/triage"
+  color: "EEF1F7"
+  description: "New; a maintainer has not looked at it yet"
+- name: "status/accepted"
+  color: "EEF1F7"
+  description: "Agreed to be in scope; ready for work"
+- name: "status/blocked"
+  color: "EEF1F7"
+  description: "Waiting on something else; see the comments"
+- name: "status/needs-rfc"
+  color: "EEF1F7"
+  description: "Too significant for an issue; needs an RFC first"
+
+# Special labels.
+- name: "good first issue"
+  color: "F2B705"
+  description: "A good place to start contributing"
+- name: "help wanted"
+  color: "4A5275"
+  description: "Maintainers would welcome a contribution here"
+- name: "security"
+  color: "10194A"
+  description: "Security hardening (report vulnerabilities privately, see SECURITY.md)"
+- name: "sovereignty"
+  color: "2B3A8F"
+  description: "Affects a commitment in SOVEREIGNTY.md"
+- name: "ai-assisted"
+  color: "EEF1F7"
+  description: "Contains meaningful AI-assisted work, disclosed with Assisted-by"

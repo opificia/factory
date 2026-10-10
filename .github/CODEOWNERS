@@ -1,0 +1,17 @@
+# Code owners for Opificia AI. A code owner must approve every pull request.
+# Later rules take precedence over earlier ones.
+# See docs/community/maintainer-guide.md.
+
+# Everything: the maintainers.
+*                       @opificia/maintainers
+
+# Policy files: the steering team.
+/LICENSE                @opificia/steering
+/LICENSES/              @opificia/steering
+/REUSE.toml             @opificia/steering
+/GOVERNANCE.md          @opificia/steering
+/SOVEREIGNTY.md         @opificia/steering
+/TRADEMARKS.md          @opificia/steering
+/CODE_OF_CONDUCT.md     @opificia/steering
+/brand/                 @opificia/steering
+/.github/CODEOWNERS     @opificia/steering

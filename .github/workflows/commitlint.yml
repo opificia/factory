@@ -1,0 +1,34 @@
+# Checks that pull request titles follow Conventional Commits. Pull requests
+# are squash-merged, so the title becomes the commit message on main.
+# The check is a plain shell test, with no third-party code.
+name: Commitlint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: read-all
+
+jobs:
+  pr-title:
+    name: Pull request title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          types='feat|fix|docs|chore|ci|refactor|test|build|perf|revert|style'
+          pattern="^(${types})(\([a-z0-9._/-]+\))?!?: [^ ].{0,98}[^.]$"
+          if printf '%s' "$TITLE" | grep -qE "$pattern"; then
+            echo "Title follows Conventional Commits: $TITLE"
+          else
+            echo "Title does not follow Conventional Commits: $TITLE"
+            echo
+            echo "Expected: type(optional scope): summary"
+            echo "Types:    ${types//|/, }"
+            echo "Example:  docs: clarify the RFC process"
+            echo "No full stop at the end; 100 characters at most."
+            exit 1
+          fi

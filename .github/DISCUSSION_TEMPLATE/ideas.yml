@@ -1,0 +1,26 @@
+title: "Idea: "
+labels: ["status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome at any stage. If an idea gains support and is significant, the next step is an RFC (see docs/rfcs/README.md).
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: Describe the idea in a few sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem it solves
+      description: Who has this problem, and what do they do today?
+    validations:
+      required: true
+  - type: textarea
+    id: sovereignty
+    attributes:
+      label: Sovereignty impact
+      description: Does this touch any commitment in SOVEREIGNTY.md? Write "none" or "not sure" if that is the case.

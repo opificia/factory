@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a new capability or an improvement.
+title: "feat: "
+labels: ["type/feature", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For early ideas, start a thread in the Ideas category of Discussions first. Significant changes need an RFC; see docs/rfcs/README.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem would this solve, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe what you would like to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other solutions or workarounds you have considered.
+  - type: dropdown
+    id: sovereignty
+    attributes:
+      label: Does this affect any sovereignty commitment?
+      description: See SOVEREIGNTY.md, for example network calls, telemetry, data storage, model providers or human approval.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: sovereignty-details
+    attributes:
+      label: Sovereignty details
+      description: If you answered yes or not sure, explain which commitments are affected and how.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and Discussions and did not find a duplicate.
+          required: true

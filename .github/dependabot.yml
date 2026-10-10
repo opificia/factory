@@ -1,0 +1,19 @@
+# Dependabot keeps the pinned GitHub Actions up to date. There are no other
+# dependencies yet; add ecosystems here when they appear, through an ADR.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Europe/Brussels"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "type/chore"
+      - "area/ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
