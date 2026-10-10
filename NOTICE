@@ -1,0 +1,29 @@
+Opificia AI
+Software, made in the open.
+
+Copyright The Opificia Authors
+Stewarded by {{STEWARD_ENTITY}}
+
+"The Opificia Authors" means everyone who has contributed to this project,
+as recorded in its version control history. See AUTHORS.md.
+
+This repository contains files under several licences. REUSE.toml maps each
+file to its licence, and the full licence texts are in the LICENSES/
+directory. In short:
+
+  - Core (everything not listed below): AGPL-3.0-only
+  - sdk/, plugins/, examples/: Apache-2.0
+  - docs/: CC-BY-4.0
+  - Configuration and template files: CC0-1.0
+  - CODE_OF_CONDUCT.md: CC-BY-SA-4.0 (adapted from the Contributor Covenant)
+  - brand/: not open source; see TRADEMARKS.md
+
+Opificia AI is a trademark of {{STEWARD_ENTITY}}. No trademark rights are
+granted by the licences above.
+
+
+Third-party notices
+-------------------
+
+This section lists third-party components included in this repository and
+the notices their licences require. There are none yet.

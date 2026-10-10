@@ -1,0 +1,2 @@
+# Keeps the sdk/ folder in git so its licence boundary is visible.
+# Everything in sdk/ is licensed under Apache-2.0 (see REUSE.toml).
