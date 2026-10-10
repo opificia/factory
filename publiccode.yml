@@ -1,0 +1,69 @@
+# publiccode.yml describes this software for public-sector catalogues.
+# Standard: https://yml.publiccode.tools (version 0.7)
+publiccodeYmlVersion: "0.7"
+
+name: Opificia AI
+url: "https://github.com/opificia/factory"
+landingURL: "https://opificia.ai"
+roadmap: "https://github.com/opificia/factory/blob/main/ROADMAP.md"
+logo: brand/opificia-mark.svg
+
+# The platform is not built yet. "web" reflects the intended way operators
+# and reviewers will use it; revise once the architecture is decided.
+platforms:
+  - web
+
+categories:
+  - application-development
+  - it-development
+  - workflow-management
+
+developmentStatus: concept
+softwareType: "standalone/other"
+
+intendedAudience:
+  scope:
+    - government
+    - science-and-technology
+
+description:
+  en:
+    shortDescription: >-
+      Open-source software factory: AI agents turn tickets into reviewed,
+      tested pull requests, on infrastructure and models you control.
+    longDescription: >-
+      Opificia AI is an open-source software factory. AI agents pick up a
+      ticket, write the change, run the tests and open a pull request, which
+      a human reviews before anything is merged. Opificia is designed to be
+      self-hosted, including in air-gapped environments, and to work with
+      any model behind an open, documented interface, with open-weight
+      models as first-class citizens. It sends no telemetry by default and
+      stores code, prompts and logs only where the operator configures.
+
+
+      The project is at the concept stage: the repository holds its
+      licences, governance, security policy and design commitments, and no
+      product code yet. Its design commitments on self-hosting, data
+      location and human control are documented in SOVEREIGNTY.md.
+    documentation: "https://github.com/opificia/factory/tree/main/docs"
+    features:
+      - Agents that turn tickets into pull requests for human review (planned)
+      - Fully self-hostable, including air-gapped installations (planned)
+      - Model-agnostic, with open-weight models supported first (planned)
+      - No telemetry by default; data stays where the operator configures (planned)
+      - Human approval required before merging, by default (planned)
+
+legal:
+  license: AGPL-3.0-only
+  mainCopyrightOwner: The Opificia Authors
+
+maintenance:
+  type: community
+  contacts:
+    - name: Bram De Backer
+      affiliation: "{{STEWARD_ENTITY}}"
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - en
