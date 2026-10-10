@@ -1,0 +1,18 @@
+Opificia AI trademark and logo notice
+
+The files this notice applies to (the Opificia AI name, logos, marks, icons
+and other brand assets, including everything in the brand/ directory) are
+not open source and are not covered by the licences that apply to the rest
+of this repository.
+
+Copyright The Opificia Authors. All rights in these files, including all
+trademark rights in "Opificia" and the Opificia AI logos, are reserved by
+{{STEWARD_ENTITY}}.
+
+You may use these files only as described in TRADEMARKS.md in the root of
+this repository. Any other use, including modifying, recolouring or
+redrawing the files, or using them as part of another name or logo,
+requires prior written permission from {{STEWARD_ENTITY}}.
+
+No licence to any trademark is granted by the AGPL-3.0, Apache-2.0,
+CC-BY-4.0 or CC0-1.0 licences that apply to other files in this repository.

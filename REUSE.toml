@@ -1,0 +1,70 @@
+version = 1
+SPDX-PackageName = "Opificia AI"
+SPDX-PackageSupplier = "The Opificia Authors"
+SPDX-PackageDownloadLocation = "https://github.com/opificia/factory"
+
+# Licensing map for Opificia AI. See docs/adr/0002-licensing-model.md.
+#
+# When several annotations match the same file, the last one wins, so the
+# default comes first and the more specific rules follow. A file that carries
+# its own SPDX header keeps that header ("closest" precedence).
+
+# Default: the core is AGPL-3.0-only.
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "The Opificia Authors"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+# Configuration and template files: CC0-1.0, so anyone can reuse them.
+[[annotations]]
+path = [
+  ".*",
+  ".github/**",
+  "**.yml",
+  "**.yaml",
+  "**.toml",
+  "CITATION.cff",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Opificia Authors"
+SPDX-License-Identifier = "CC0-1.0"
+
+# Extension points: Apache-2.0, so they are easy to adopt.
+[[annotations]]
+path = ["sdk/**", "plugins/**", "examples/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Opificia Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Documentation prose: CC-BY-4.0.
+[[annotations]]
+path = "docs/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "The Opificia Authors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# The code of conduct is adapted from the Contributor Covenant 3.0, which is
+# licensed under CC-BY-SA-4.0. Our adaptation must keep that licence.
+[[annotations]]
+path = "CODE_OF_CONDUCT.md"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Organization for Ethical Source",
+  "The Opificia Authors",
+]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# Brand assets are not open source. See TRADEMARKS.md.
+[[annotations]]
+path = "brand/**"
+precedence = "override"
+SPDX-FileCopyrightText = "The Opificia Authors"
+SPDX-License-Identifier = "LicenseRef-Opificia-Trademark"
+
+# The brand usage guide itself is documentation and may be shared.
+[[annotations]]
+path = "brand/README.md"
+precedence = "override"
+SPDX-FileCopyrightText = "The Opificia Authors"
+SPDX-License-Identifier = "CC-BY-4.0"
