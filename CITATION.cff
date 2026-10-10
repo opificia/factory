@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: >-
+  If you use Opificia AI in research or publications, please cite it using
+  the metadata from this file.
+type: software
+title: Opificia AI
+abstract: >-
+  An open-source software factory in which AI agents turn tickets into
+  reviewed, tested pull requests, on infrastructure and models the operator
+  controls.
+authors:
+  - name: The Opificia Authors
+repository-code: "https://github.com/opificia/factory"
+url: "https://opificia.ai"
+license: AGPL-3.0-only
+keywords:
+  - agentic
+  - software-factory
+  - ai-agents
+  - sovereignty
+  - self-hosted
