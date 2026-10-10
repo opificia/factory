@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opificia AI: software, made in the open</title>
+  <meta name="description" content="Opificia AI is an open-source software factory: agents turn tickets into reviewed, tested pull requests, on servers and models you choose.">
+  <meta name="theme-color" content="#10194A">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Opificia AI">
+  <meta property="og:description" content="Software, made in the open. An open-source software factory, made in Europe.">
+  <meta property="og:url" content="https://opificia.ai/">
+  <meta property="og:image" content="https://opificia.ai/assets/opificia-social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="The Opificia AI logo on a navy field, with the line: Software, made in the open.">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/opificia-favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="hero">
+    <div class="rack" aria-hidden="true"><span class="rack-slot"></span></div>
+    <div class="wrap">
+      <nav class="topbar" aria-label="Main">
+        <a class="brand" href="./"><img src="assets/opificia-lockup-reverse.svg" alt="Opificia AI" width="198" height="48"></a>
+        <ul class="nav">
+          <li><a href="#loop">How it works</a></li>
+          <li><a href="#sovereignty">Sovereignty</a></li>
+          <li><a href="#roadmap">Roadmap</a></li>
+          <li><a href="#contribute">Contribute</a></li>
+          <li><a href="https://github.com/opificia/factory">Source</a></li>
+        </ul>
+      </nav>
+
+      <div class="hero-body">
+        <p class="status"><span class="tag">Early stage</span> No usable release yet. We are building in the open.</p>
+        <h1>Software, made in the open.</h1>
+        <p class="lead">Opificia AI is an open-source software factory. Agents pick up a ticket, write the change, run the tests and open a pull request. A person reviews it and decides what is merged. You run it on servers you choose, with models you choose.</p>
+        <p class="actions">
+          <a class="button button-on-navy" href="https://github.com/opificia/factory">Read the source</a>
+          <a class="button button-ghost" href="#sovereignty">Read the commitments</a>
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="band" id="loop" aria-labelledby="loop-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="loop-title">The loop we are building</h2>
+          <p>This is the first working loop on the roadmap. None of it runs yet. It is what the code will do, and what you will be able to check it against.</p>
+        </div>
+        <ol class="loop">
+          <li>
+            <span class="step">1</span>
+            <h3>Ticket</h3>
+            <p>You describe a change in a ticket, in the tracker you already use.</p>
+          </li>
+          <li>
+            <span class="step">2</span>
+            <h3>Change</h3>
+            <p>An agent reads the ticket and the code, and writes the change in a sandbox.</p>
+          </li>
+          <li>
+            <span class="step">3</span>
+            <h3>Tests</h3>
+            <p>The agent runs your test suite against the change.</p>
+          </li>
+          <li>
+            <span class="step">4</span>
+            <h3>Pull request</h3>
+            <p>The agent opens a pull request that says what it changed and why.</p>
+          </li>
+          <li class="loop-human">
+            <span class="step">5</span>
+            <h3>Your review</h3>
+            <p>A person reviews it. By default, nothing is merged without that approval.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="band band-mist" id="sovereignty" aria-labelledby="sovereignty-title">
+      <div class="wrap">
+        <h2 id="sovereignty-title" class="visually-hidden">Sovereignty</h2>
+        <div class="questions">
+          <p>Where does it run?</p>
+          <p>Who holds the keys?</p>
+          <p>Under which law?</p>
+        </div>
+        <div class="section-head">
+          <p class="lead-dark">For every installation of Opificia, you should be able to answer these three questions yourself. The eight commitments below are how we intend to keep it that way. Each one comes with a test, so you can check it.</p>
+          <p class="note"><span class="tag tag-ink">Proposed</span> All eight stay proposed until the maintainers accept them as architecture decision records.</p>
+        </div>
+        <ol class="commitments">
+          <li>
+            <h3>Runs anywhere you choose</h3>
+            <p>Fully self-hostable, including on air-gapped networks. No feature needs a service hosted by us or by anyone else.</p>
+            <p class="test"><span>Test</span> Every feature works with no outbound internet access.</p>
+          </li>
+          <li>
+            <h3>No phone-home</h3>
+            <p>Telemetry is off by default. If you turn it on, it goes only to an endpoint you configure.</p>
+            <p class="test"><span>Test</span> A default installation connects only to endpoints you configured.</p>
+          </li>
+          <li>
+            <h3>Model-agnostic</h3>
+            <p>Any model behind an open, documented interface. Open-weight models, whose weights are published and can run anywhere, are first-class.</p>
+            <p class="test"><span>Test</span> The reference tests pass with an open-weight model running locally.</p>
+          </li>
+          <li>
+            <h3>Open standards</h3>
+            <p>Open protocols and formats first. Proprietary integrations can exist as plugins, never as requirements.</p>
+            <p class="test"><span>Test</span> Every external interface in the core follows a published specification.</p>
+          </li>
+          <li>
+            <h3>Your data stays yours</h3>
+            <p>Code, prompts, logs and traces stay where you configure them. The project does not train models on them.</p>
+            <p class="test"><span>Test</span> Nothing is written or sent outside the destinations in your configuration.</p>
+          </li>
+          <li>
+            <h3>Humans decide</h3>
+            <p>By default, nothing is merged or deployed without a person approving it. You can change that, but only explicitly.</p>
+            <p class="test"><span>Test</span> No agent can merge or deploy without a recorded human approval.</p>
+          </li>
+          <li>
+            <h3>Transparent supply chain</h3>
+            <p>For the first release, we aim to publish SBOMs, sign releases and make builds reproducible.</p>
+            <p class="test"><span>Test</span> An independent rebuild produces the same artefacts.</p>
+          </li>
+          <li>
+            <h3>A European reference deployment</h3>
+            <p>The project's own reference deployment runs on providers headquartered in Europe. It sets no limit on where you run Opificia.</p>
+            <p class="test"><span>Test</span> The providers are listed publicly, with their country.</p>
+          </li>
+        </ol>
+        <p class="more"><a href="https://github.com/opificia/factory/blob/main/SOVEREIGNTY.md">Read the full commitments in SOVEREIGNTY.md</a></p>
+      </div>
+    </section>
+
+    <section class="band" id="licence" aria-labelledby="licence-title">
+      <div class="wrap split">
+        <div class="section-head">
+          <h2 id="licence-title">Licensing in plain words</h2>
+          <p>You may use, study, change and share Opificia. If you modify the core and offer it to other people over a network, you share your changes under the same licence. Plugins built on the SDK carry no such obligation.</p>
+          <p class="more"><a href="https://github.com/opificia/factory/blob/main/docs/adr/0002-licensing-model.md">Why we chose this model</a></p>
+        </div>
+        <table class="licences">
+          <caption class="visually-hidden">Licence per part of the project</caption>
+          <tbody>
+            <tr><th scope="row">The core</th><td><code>AGPL-3.0-only</code></td></tr>
+            <tr><th scope="row">SDK, plugins and examples</th><td><code>Apache-2.0</code></td></tr>
+            <tr><th scope="row">Documentation</th><td><code>CC-BY-4.0</code></td></tr>
+            <tr><th scope="row">Name and logo</th><td>Trademark, not open source</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="band band-rule" id="roadmap" aria-labelledby="roadmap-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="roadmap-title">Roadmap</h2>
+          <p>Four phases to a first release. No dates yet: we will add them when we can keep them.</p>
+        </div>
+        <ol class="phases">
+          <li class="phase-now">
+            <span class="step">Phase 0</span>
+            <h3>Foundations <span class="tag tag-ink">In progress</span></h3>
+            <p>Licences, governance, security policy and the sovereignty commitments.</p>
+          </li>
+          <li>
+            <span class="step">Phase 1</span>
+            <h3>A first working loop</h3>
+            <p>One agent, one ticket, one pull request, fully self-hosted with an open-weight model.</p>
+          </li>
+          <li>
+            <span class="step">Phase 2</span>
+            <h3>Hardening</h3>
+            <p>Sandbox isolation, credential handling, audit logs and a test for each commitment.</p>
+          </li>
+          <li>
+            <span class="step">Phase 3</span>
+            <h3>First release</h3>
+            <p>Signed, documented and installable, with an SBOM and a European reference deployment.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="contribute" id="contribute" aria-labelledby="contribute-title">
+      <div class="rack rack-gold" aria-hidden="true"><span class="rack-slot"></span></div>
+      <div class="wrap">
+        <h2 id="contribute-title">Every factory needs a twelfth tooth.</h2>
+        <p class="lead">There is no product code yet, which makes this a good time to shape it. We need people to review the policies, write RFCs, discuss the design and translate the documentation.</p>
+        <ul class="links">
+          <li><a href="https://github.com/opificia/factory/discussions">Join the discussion</a></li>
+          <li><a href="https://github.com/opificia/factory/blob/main/CONTRIBUTING.md">Read the contribution guide</a></li>
+          <li><a href="https://github.com/opificia/factory/tree/main/docs/rfcs">Propose a change as an RFC</a></li>
+        </ul>
+        <p class="small">Every commit is signed off under the Developer Certificate of Origin. You keep your copyright.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <div>
+        <p>Opificia AI™ is a trademark of Experience Lab BV, which stewards the project. Copyright The Opificia Authors.</p>
+        <p>This site sets no cookies, runs no scripts and loads nothing from other servers.</p>
+      </div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/opificia/factory/blob/main/SECURITY.md">Report a vulnerability</a></li>
+        <li><a href="https://github.com/opificia/factory/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a></li>
+        <li><a href="https://github.com/opificia/factory/blob/main/GOVERNANCE.md">Governance</a></li>
+        <li><a href="https://github.com/opificia/factory/blob/main/TRADEMARKS.md">Trademarks</a></li>
+        <li><a href="mailto:hi@opificia.ai">hi@opificia.ai</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

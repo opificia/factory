@@ -16,7 +16,8 @@ directory. In short:
   - docs/: CC-BY-4.0
   - Configuration and template files: CC0-1.0
   - CODE_OF_CONDUCT.md: CC-BY-SA-4.0 (adapted from the Contributor Covenant)
-  - brand/: not open source; see TRADEMARKS.md
+  - website/: CC-BY-4.0, except the fonts (OFL-1.1) and the logo files
+  - brand/ and website/assets/: not open source; see TRADEMARKS.md
 
 Opificia AI is a trademark of Experience Lab BV. No trademark rights are
 granted by the licences above.
@@ -26,4 +27,15 @@ Third-party notices
 -------------------
 
 This section lists third-party components included in this repository and
-the notices their licences require. There are none yet.
+the notices their licences require.
+
+Archivo (website/fonts/archivo-latin-wdth-normal.woff2)
+  Copyright 2020 The Archivo Project Authors
+  (https://github.com/Omnibus-Type/Archivo)
+  Licensed under the SIL Open Font License, Version 1.1.
+  See website/fonts/Archivo-OFL.txt and LICENSES/OFL-1.1.txt.
+
+IBM Plex Mono (website/fonts/ibm-plex-mono-latin-*-normal.woff2)
+  Copyright 2017 IBM Corp. All rights reserved.
+  Licensed under the SIL Open Font License, Version 1.1.
+  See website/fonts/IBMPlexMono-OFL.txt and LICENSES/OFL-1.1.txt.
