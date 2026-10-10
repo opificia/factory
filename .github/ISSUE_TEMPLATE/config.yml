@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/opificia/factory/discussions/categories/q-a
+    about: Questions go to Discussions, so the answers help others too.
+  - name: Propose an idea
+    url: https://github.com/opificia/factory/discussions/categories/ideas
+    about: Discuss new ideas before opening a feature request.
+  - name: Report a vulnerability
+    url: https://github.com/opificia/factory/security/policy
+    about: Never report vulnerabilities in public issues. Follow SECURITY.md.

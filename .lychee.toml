@@ -1,0 +1,27 @@
+# lychee link checker configuration. See https://lychee.cli.rs.
+
+# Retry flaky hosts a few times before failing.
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+
+# Accept rate limiting as "not broken".
+accept = ["200..=299", "429"]
+
+# Links that cannot be checked from CI.
+exclude = [
+  # The brand book is private for now and needs a login.
+  "^https://claude\\.ai/",
+  # Badge endpoints that only work once the repository is public and registered.
+  "^https://api\\.reuse\\.software/",
+  "^https://api\\.scorecard\\.dev/",
+  "^https://scorecard\\.dev/viewer/",
+  # The repository is private for now, so its own pages return 404 to the
+  # checker. Remove this line once the repository is public.
+  "^https://github\\.com/opificia/factory",
+  # Email addresses.
+  "^mailto:",
+]
+
+# Do not check links inside code blocks.
+include_verbatim = false

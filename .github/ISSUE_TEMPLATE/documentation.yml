@@ -1,0 +1,24 @@
+name: Documentation
+description: Report something missing, unclear or wrong in the documentation.
+title: "docs: "
+labels: ["type/docs", "status/triage"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Where
+      description: The file, page or section.
+      placeholder: docs/rfcs/README.md, section "Lifecycle"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change
+      description: If you have a suggestion, describe it here, or open a pull request directly.
