@@ -1,0 +1,17 @@
+# Operating system files
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.#*
+\#*#
+*.sublime-workspace

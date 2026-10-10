@@ -1,0 +1,8 @@
+# .mailmap maps the names and email addresses in the git history to one
+# canonical identity per person, so that contributions are grouped correctly.
+#
+# Format, one person per line:
+#   Proper Name <proper@email> Commit Name <commit@email>
+#
+# See `git help shortlog` for details. Add yourself in a pull request if your
+# commits appear under more than one name or address.
