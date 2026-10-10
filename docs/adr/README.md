@@ -1,0 +1,42 @@
+# Architecture decision records
+
+An architecture decision record (ADR) is a short document that records one significant decision about Opificia AI: what was decided, why, and what follows from it. Together, the ADRs explain why Opificia is built the way it is.
+
+We use the MADR format (Markdown Architectural Decision Records), in a slightly shortened form.
+
+## When to write an ADR
+
+Write an ADR when a decision:
+
+- is hard or expensive to reverse, such as a language, a storage engine or a public interface;
+- adds a dependency (a package, a GitHub Action, a container image or an external service);
+- affects a commitment in [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md); or
+- settles a question that people keep asking.
+
+Large or contested decisions start as an [RFC](../rfcs/README.md). Once the RFC is accepted, record the outcome as an ADR. Small, clear decisions can go straight to an ADR in a pull request.
+
+## How to write one
+
+1. Copy [`0000-template.md`](0000-template.md) to `NNNN-short-title.md`, using the next free number.
+2. Fill in the sections. Keep it short: one to two pages is usually enough.
+3. Set the status to `proposed` and open a pull request.
+4. When the pull request is merged with the maintainers' approval, set the status to `accepted`.
+
+ADRs are not edited after acceptance, apart from typos and links. To change a decision, write a new ADR that supersedes the old one, and set the old one's status to `superseded by ADR-NNNN`.
+
+## Statuses
+
+| Status | Meaning |
+| --- | --- |
+| `proposed` | Under discussion. |
+| `accepted` | Decided. The code and documentation follow it. |
+| `rejected` | Considered and not adopted. Kept for the record. |
+| `deprecated` | No longer relevant, without a replacement. |
+| `superseded by ADR-NNNN` | Replaced by a later decision. |
+
+## Index
+
+| ADR | Title | Status |
+| --- | --- | --- |
+| [0001](0001-record-architecture-decisions.md) | Record architecture decisions | accepted |
+| [0002](0002-licensing-model.md) | Licensing model | proposed |
