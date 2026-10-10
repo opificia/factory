@@ -6,7 +6,7 @@ This policy explains how you may use the Opificia AI name and logos. It is adapt
 
 The code is open source, and you may use, change and share it under its licence. The name and logos are different: they tell people that something comes from the Opificia project. If anyone could put the name on anything, people could no longer trust it. This policy protects that trust, without getting in the way of normal use.
 
-"Opificia", "Opificia AI" and the Opificia AI logos are trademarks of {{STEWARD_ENTITY}}. They are not registered yet, so we use the ™ symbol, not the symbol for a registered trademark. The steward holds them for the project and intends to transfer them to a neutral foundation if the project moves to one (see [`GOVERNANCE.md`](GOVERNANCE.md)).
+"Opificia", "Opificia AI" and the Opificia AI logos are trademarks of Experience Lab BV. They are not registered yet, so we use the ™ symbol, not the symbol for a registered trademark. The steward holds them for the project and intends to transfer them to a neutral foundation if the project moves to one (see [`GOVERNANCE.md`](GOVERNANCE.md)).
 
 ## The licence does not grant trademark rights
 
@@ -32,7 +32,7 @@ Ask us first if you want to:
 - **Sell merchandise** with the name or logo.
 - **Use the logo in a way not described here.**
 
-We aim to answer requests within 15 working days. Contact: {{STEWARD_ENTITY}}, at <hi@opificia.ai>.
+We aim to answer requests within 15 working days. Contact: Experience Lab BV, at <hi@opificia.ai>.
 
 ## Uses that are never allowed
 

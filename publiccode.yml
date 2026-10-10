@@ -61,7 +61,7 @@ maintenance:
   type: community
   contacts:
     - name: Bram De Backer
-      affiliation: "{{STEWARD_ENTITY}}"
+      affiliation: "Experience Lab BV"
 
 localisation:
   localisationReady: false
