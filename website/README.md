@@ -16,7 +16,7 @@ Open `index.html` in a browser, or serve the folder locally:
 python3 -m http.server --directory website 8000
 ```
 
-Then open <http://localhost:8000>.
+Then open `http://localhost:8000` in your browser.
 
 ## Files
 
@@ -30,7 +30,7 @@ Do not edit the files in `assets/`. Copy new versions from `brand/` instead.
 
 ## Deployment
 
-Where the site is hosted has not been decided yet. Any server that can serve static files over HTTPS will do. In line with commitment 8 in `SOVEREIGNTY.md`, we intend to host it with a provider headquartered in Europe. Serve the contents of this folder at the root of <https://opificia.ai>; the social preview tags expect `assets/` at that location.
+Where the site is hosted has not been decided yet. Any server that can serve static files over HTTPS will do. In line with commitment 8 in `SOVEREIGNTY.md`, we intend to host it with a provider headquartered in Europe. Serve the contents of this folder at the root of `https://opificia.ai`; the social preview tags expect `assets/` at that location.
 
 ## Writing for the site
 
