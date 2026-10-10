@@ -74,4 +74,4 @@ Dutch (NL), French (FR) and German (DE) translations of this README are planned.
 
 ---
 
-Opificia AI™ is a trademark of {{STEWARD_ENTITY}}. Copyright The Opificia Authors.
+Opificia AI™ is a trademark of Experience Lab BV. Copyright The Opificia Authors.

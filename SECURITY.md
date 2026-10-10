@@ -77,4 +77,4 @@ If you are unsure whether your research is covered, ask us first through one of 
 
 ## Regulation
 
-{{STEWARD_ENTITY}} intends to meet the vulnerability-handling expectations of the EU Cyber Resilience Act for its commercial offerings.
+Experience Lab BV intends to meet the vulnerability-handling expectations of the EU Cyber Resilience Act for its commercial offerings.

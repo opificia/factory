@@ -19,6 +19,6 @@ We cannot promise response times in Discussions. [`docs/community/triage.md`](do
 
 ## Commercial support
 
-Commercial support may be offered by {{STEWARD_ENTITY}} or by other companies. Details will follow here. The project does not endorse any support provider.
+Commercial support may be offered by Experience Lab BV or by other companies. Details will follow here. The project does not endorse any support provider.
 
 For other questions about the project, email <hi@opificia.ai>.

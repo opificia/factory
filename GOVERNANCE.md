@@ -12,7 +12,7 @@ Opificia is in its founding phase. It is led by a steward, with an open path for
 | **Contributor** | Anyone who has contributed: code, docs, reviews, translations, triage. | Everything a user can, plus open pull requests and comment on RFCs. |
 | **Committer** | A contributor with triage rights, granted by the maintainers. | Label and triage issues, review pull requests. Their approval counts as a review, but merging needs a maintainer. |
 | **Maintainer** | A committer elected by the maintainers. Listed in [`MAINTAINERS.md`](MAINTAINERS.md). | Merge pull requests, cut releases, vote on decisions, accept RFCs. |
-| **Steward** | {{STEWARD_ENTITY}}, the legal entity that stewards the project. | Hold the trademark and project accounts, appoint the first maintainers, break ties during the founding phase. |
+| **Steward** | Experience Lab BV, the legal entity that stewards the project. | Hold the trademark and project accounts, appoint the first maintainers, break ties during the founding phase. |
 
 The **steering team** is the subset of maintainers who own policy files (licences, governance, sovereignty commitments, trademarks). During the founding phase it consists of the steward's representatives and any maintainers they invite. Changes to those files need a steering team approval.
 
