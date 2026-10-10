@@ -17,6 +17,9 @@ jobs:
     name: Scorecard analysis
     runs-on: ubuntu-latest
     permissions:
+      # A job-level block replaces read-all, so read access is listed again.
+      contents: read
+      actions: read
       # Upload results to code scanning.
       security-events: write
       # Publish results to the public Scorecard API and get a badge.
