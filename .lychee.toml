@@ -23,5 +23,8 @@ exclude = [
   "^mailto:",
 ]
 
+# Never check local addresses such as localhost.
+exclude_loopback = true
+
 # Do not check links inside code blocks.
 include_verbatim = false

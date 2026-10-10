@@ -158,6 +158,7 @@ Inbound equals outbound: you license your contribution under the licence of the 
 | Everything not listed below (the core) | AGPL-3.0-only |
 | `sdk/`, `plugins/`, `examples/` | Apache-2.0 |
 | `docs/` | CC-BY-4.0 |
+| `website/` (except fonts and logo files) | CC-BY-4.0 |
 | Configuration and templates (`.github/`, dotfiles, `*.yml`) | CC0-1.0 |
 | `brand/` | Not open source; see [`TRADEMARKS.md`](TRADEMARKS.md) |
 
