@@ -1,0 +1,60 @@
+# Deploys the website to Scaleway Object Storage when website/ changes on main.
+# The bucket sits behind a Scaleway Edge Services pipeline that serves the site
+# over HTTPS. Edge caches pages for 5 minutes, so changes show within that time.
+# See docs/adr/0003-host-the-website-on-scaleway.md and website/README.md.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - website/**
+      - .github/workflows/website.yml
+  workflow_dispatch:
+
+permissions: read-all
+
+# Never run two deployments at the same time; the newest one wins.
+concurrency:
+  group: website-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Scaleway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Upload website/ to the bucket
+        # The AWS CLI is preinstalled on GitHub-hosted runners and works with
+        # Scaleway's S3-compatible API. The key can only read, write and delete
+        # objects in the Opificia project.
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          AWS_DEFAULT_REGION: fr-par
+          AWS_ENDPOINT_URL: https://s3.fr-par.scw.cloud
+        run: |
+          set -euo pipefail
+          aws s3 sync website/ s3://opificia-website/ \
+            --exclude "README.md" \
+            --exclude ".*" \
+            --acl public-read \
+            --cache-control "public, max-age=300" \
+            --delete \
+            --no-progress
+      - name: Check the deployed page
+        env:
+          EDGE_URL: https://8b5f22f6-2edf-45a8-9124-569e60b27c5a.svc.edge.scw.cloud/
+        run: |
+          set -euo pipefail
+          status="$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 5 "$EDGE_URL")"
+          echo "Edge endpoint returned HTTP $status"
+          test "$status" = "200"
+          {
+            echo "Deployed website/ to the opificia-website bucket."
+            echo "Live within 5 minutes at $EDGE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
