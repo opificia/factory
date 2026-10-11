@@ -97,9 +97,9 @@ Our commitments apply to the software you run, not to the tools we use to write 
 
 - **No tool is required.** No part of Opificia may require a specific AI tool or provider to build, run or operate it.
 - **AI help is recorded.** Every commit with meaningful AI help names the tool in an `Assisted-by` trailer, so the record is public in the git history. See [`CONTRIBUTING.md`](CONTRIBUTING.md#ai-assisted-contributions).
-- **Non-public material stays out.** We do not send non-public material to third-party AI services. That covers embargoed vulnerability reports, secrets and credentials, and anything people share with the project in confidence.
+- **Confidential material stays out.** We do not send embargoed vulnerability reports, secrets and credentials, or anything people share with the project in confidence to third-party AI services.
 
-We intend to move our own work onto Opificia as it matures. See [`ROADMAP.md`](ROADMAP.md#phase-1-a-first-working-loop).
+We intend to move our own work onto Opificia as it matures. See [`ROADMAP.md`](ROADMAP.md#phase-2-hardening).
 
 ## Changing these commitments
 
