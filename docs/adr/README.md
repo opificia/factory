@@ -39,5 +39,5 @@ ADRs are not edited after acceptance, apart from typos and links. To change a de
 | ADR | Title | Status |
 | --- | --- | --- |
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | accepted |
-| [0002](0002-licensing-model.md) | Licensing model | proposed |
-| [0003](0003-host-the-website-on-scaleway.md) | Host the website on Scaleway | proposed |
+| [0002](0002-licensing-model.md) | Licensing model | accepted |
+| [0003](0003-host-the-website-on-scaleway.md) | Host the website on Scaleway | accepted |
