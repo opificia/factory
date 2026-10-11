@@ -1,6 +1,6 @@
 # ADR-0003: Host the website on Scaleway
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-11
 - **Deciders:** the project steward
 - **Related:** [`website/README.md`](../../website/README.md), [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md) commitment 8

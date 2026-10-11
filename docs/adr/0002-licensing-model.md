@@ -1,6 +1,6 @@
 # ADR-0002: Licensing model
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-11
 - **Deciders:** the steering team
 - **Related:** [`REUSE.toml`](../../REUSE.toml), [`CONTRIBUTING.md`](../../CONTRIBUTING.md), [`TRADEMARKS.md`](../../TRADEMARKS.md)
