@@ -85,6 +85,21 @@ How we test it: the providers used for the reference deployment are listed publi
 - **The licence does not restrict who may use the software.** Open-source licences cannot discriminate between users or fields of use, and we do not want them to. Anyone, anywhere, may use Opificia under its licence.
 - **Sovereignty comes from operation, not from the code alone.** It depends on who operates an installation, where, and under which law. Opificia aims to make a sovereign setup possible and practical. It cannot make a given installation sovereign by itself.
 - **It is not a certification.** These commitments describe how we build the software. They are not a legal or regulatory assessment of any installation.
+- **It does not restrict which tools we use to build Opificia.** See [How we build Opificia](#how-we-build-opificia) below.
+
+## How we build Opificia
+
+*Status: proposed until ADR accepted.*
+
+We write Opificia with help from AI coding tools. Some of these are frontier models from American providers: among the strongest closed models available today. We say this openly because some readers will want to know.
+
+Our commitments apply to the software you run, not to the tools we use to write it. Three rules keep that true:
+
+- **No tool is required.** No part of Opificia may require a specific AI tool or provider to build, run or operate it.
+- **AI help is recorded.** Every commit with meaningful AI help names the tool in an `Assisted-by` trailer, so the record is public in the git history. See [`CONTRIBUTING.md`](CONTRIBUTING.md#ai-assisted-contributions).
+- **Non-public material stays out.** We do not send non-public material to third-party AI services. That covers embargoed vulnerability reports, secrets and credentials, and anything people share with the project in confidence.
+
+We intend to move our own work onto Opificia as it matures. See [`ROADMAP.md`](ROADMAP.md#phase-1-a-first-working-loop).
 
 ## Changing these commitments
 

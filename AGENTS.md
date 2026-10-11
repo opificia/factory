@@ -31,6 +31,7 @@ Opificia is an open-source software factory: agents turn tickets into reviewed, 
 7. **Do not change policy files** (`LICENSE*`, `REUSE.toml`, `GOVERNANCE.md`, `SOVEREIGNTY.md`, `TRADEMARKS.md`) unless the task explicitly asks for it.
 8. **Do not touch `brand/`.** Logo files are copied unchanged from the brand book.
 9. **Pin GitHub Actions to a full commit SHA**, with the version as a comment, and keep `permissions: read-all` at the top of every workflow.
+10. **Keep agent instructions in this file.** `AGENTS.md` is the only source of agent instructions. Tool-specific files (for example `CLAUDE.md` or `.cursorrules`) may exist only as a one-line pointer to this file.
 
 ## Writing style
 

@@ -145,6 +145,7 @@ Opificia builds AI agents, so we expect contributors to use AI tools too. These 
 
   "Meaningful" means the tool wrote or substantially rewrote part of the change. Autocompletion of a single line does not need a trailer.
 - **No incompatible code.** Do not paste output that reproduces code under a licence incompatible with the folder you change. If a tool produces a large block that looks copied from elsewhere, do not submit it.
+- **Keep non-public material out of AI tools.** Do not paste or send non-public material into third-party AI tools. That includes embargoed security reports, secrets and credentials, and anything shared with the project in confidence. If in doubt, ask a maintainer first. [How we build Opificia](SOVEREIGNTY.md#how-we-build-opificia) explains why.
 - **Automated agents** may open pull requests only from a clearly labelled bot account (for example, a name ending in `-bot` and a profile that says who runs it). A human maintainer must approve every such pull request before it is merged. A bot account cannot sign off on behalf of a person.
 
 Pull requests with meaningful AI assistance get the `ai-assisted` label. This is for transparency, not a judgement.

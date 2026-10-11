@@ -25,6 +25,7 @@ Build the smallest version of the factory that works end to end: one agent takes
 - RFCs and ADRs for the core architecture, the model interface and the sandbox.
 - A first choice of language and runtime, recorded in an ADR.
 - The loop running fully self-hosted, with at least one open-weight model.
+- **Opificia builds Opificia.** Once the loop works, we use it on our own tickets, running on open-weight models hosted in Europe. We publish how this compares with the AI tools we use today, using four measures: merge rate without human rewrite, CI rounds per merged pull request, review minutes per pull request and cost per merged pull request. We aim to do most of our own work on Opificia by the first release. See [How we build Opificia](SOVEREIGNTY.md#how-we-build-opificia).
 
 Done when: someone outside the core team can run the loop on their own machine from the documentation.
 
@@ -49,6 +50,7 @@ Publish a first release that people can install and evaluate.
 - Installation and operations documentation.
 - A release and support policy (see [`docs/community/release-policy.md`](docs/community/release-policy.md)).
 - A reference deployment on infrastructure from providers headquartered in Europe.
+- Most project work runs on Opificia itself, and the comparison from phase 1 is public.
 
 Done when: version 0.1.0 is tagged, signed and documented.
 
