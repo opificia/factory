@@ -30,7 +30,15 @@ Do not edit the files in `assets/`. Copy new versions from `brand/` instead.
 
 ## Deployment
 
-Where the site is hosted has not been decided yet. Any server that can serve static files over HTTPS will do. In line with commitment 8 in `SOVEREIGNTY.md`, we intend to host it with a provider headquartered in Europe. Serve the contents of this folder at the root of `https://opificia.ai`; the social preview tags expect `assets/` at that location.
+The site is hosted on Scaleway in Paris (`fr-par`), as recorded in [ADR 0003](../docs/adr/0003-host-the-website-on-scaleway.md):
+
+- the files live in the Object Storage bucket `opificia-website`;
+- a Scaleway Edge Services pipeline serves them over HTTPS, with a 5-minute cache;
+- `opificia.ai` will point to that pipeline once its DNS moves to Scaleway. Until then, the site is at `https://8b5f22f6-2edf-45a8-9124-569e60b27c5a.svc.edge.scw.cloud/`.
+
+**Every change to `website/` on `main` is deployed automatically** by the [`Website` workflow](../.github/workflows/website.yml). It uploads this folder to the bucket (without this README), removes files that no longer exist, and checks that the page responds. Changes appear within 5 minutes. A maintainer can also run the workflow by hand from the Actions tab.
+
+The workflow uses a Scaleway API key stored as the repository secrets `SCW_ACCESS_KEY` and `SCW_SECRET_KEY`. The key belongs to the IAM application `opificia-website-deploy` and can only read, write and delete objects. It cannot change the bucket, Edge Services or DNS.
 
 ## Writing for the site
 
