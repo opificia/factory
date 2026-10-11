@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repository foundations: licences and REUSE mapping, contribution guide with DCO sign-off, code of conduct, security policy, governance, trademark policy and sovereignty commitments.
 - ADR and RFC templates, and the first two ADRs.
 - Issue, pull request and discussion templates.
-- Repository hygiene checks: REUSE, DCO, Markdown style, links, pull request titles, OpenSSF Scorecard and label sync.
+- Repository hygiene checks in one `Checks` workflow with parallel jobs (REUSE, DCO, Markdown style, links, pull request titles), plus OpenSSF Scorecard and label sync.
 - A first static website in `website/`, with self-hosted fonts and no scripts or third-party requests, deployed to Scaleway by the `Website` workflow.
 
 [Unreleased]: https://github.com/opificia/factory/commits/main
