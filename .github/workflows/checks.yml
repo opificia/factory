@@ -1,0 +1,131 @@
+# Repository hygiene checks, run as parallel jobs. Job names are the check
+# names shown on pull requests; keep them stable, because branch rules refer
+# to them.
+#
+#   REUSE lint         every file has copyright and licence information (REUSE.toml)
+#   markdownlint       Markdown style (.markdownlint.yaml)
+#   Link check         links in Markdown files (.lychee.toml); also weekly
+#   DCO sign-off       every commit has a Signed-off-by line (pull requests only)
+#   Pull request title Conventional Commits, since squash merges use the title
+#
+# Scorecard, Labels and Website stay in their own workflows: they run on other
+# triggers and need write permissions or secrets that these checks do not.
+name: Checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly link check, to catch links that break over time.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: read-all
+
+# A new push to a pull request cancels the checks still running for the old one.
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reuse:
+    name: REUSE lint
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run reuse lint
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+
+  markdownlint:
+    name: markdownlint
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+        with:
+          globs: "**/*.md"
+
+  links:
+    name: Link check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run lychee
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --config .lychee.toml --no-progress "./**/*.md"
+          fail: true
+          jobSummary: true
+          format: markdown
+
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check every commit for a sign-off
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
+            author_email="$(git show -s --format='%ae' "$sha")"
+            signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
+            if grep -qiF "<${author_email}>" <<< "$signoffs"; then
+              echo "ok      $(git show -s --format='%h %s' "$sha")"
+            else
+              echo "missing $(git show -s --format='%h %s' "$sha")"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo
+            echo "Some commits lack a Signed-off-by line matching the commit author's email."
+            echo "See CONTRIBUTING.md, section 'How to fix a missing sign-off'."
+            exit 1
+          fi
+
+  pr-title:
+    name: Pull request title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          types='feat|fix|docs|chore|ci|refactor|test|build|perf|revert|style'
+          pattern="^(${types})(\([a-z0-9._/-]+\))?!?: [^ ].{0,98}[^.]$"
+          if printf '%s' "$TITLE" | grep -qE "$pattern"; then
+            echo "Title follows Conventional Commits: $TITLE"
+          else
+            echo "Title does not follow Conventional Commits: $TITLE"
+            echo
+            echo "Expected: type(optional scope): summary"
+            echo "Types:    ${types//|/, }"
+            echo "Example:  docs: clarify the RFC process"
+            echo "No full stop at the end; 100 characters at most."
+            exit 1
+          fi
