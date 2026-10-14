@@ -83,6 +83,22 @@ Add `-s` when you commit. Git adds the line for you, using `user.name` and `user
 git commit -s -m "docs: clarify the RFC process"
 ```
 
+### Catch a missing sign-off before you push
+
+We recommend that you set up two things once, in your clone of the repository:
+
+```sh
+cp .githooks/pre-push .git/hooks/pre-push
+git config alias.signoff '!f() { git rebase --quiet --signoff --force-rebase "$(git merge-base HEAD "${1:-origin/main}")"; }; f'
+```
+
+- The `pre-push` hook runs the same check as CI. If a commit lacks your sign-off, git refuses the push and lists the commit, so the problem never reaches a pull request.
+- `git signoff` signs off every commit on your branch since it left `main`. Use `git signoff <branch>` if you started from another branch.
+
+We copy the hook into `.git/hooks` instead of pointing git at `.githooks`. That way, a branch you check out cannot change which hook runs on your machine. Copy the hook again when it changes.
+
+If an AI agent writes commits for you, it never signs them off (see [AI-assisted contributions](#ai-assisted-contributions)). Review the commits, then run `git signoff` and push.
+
 ### How to fix a missing sign-off
 
 For the last commit:
