@@ -42,3 +42,4 @@ ADRs are not edited after acceptance, apart from typos and links. To change a de
 | [0002](0002-licensing-model.md) | Licensing model | accepted |
 | [0003](0003-host-the-website-on-scaleway.md) | Host the website on Scaleway | accepted |
 | [0004](0004-target-architecture.md) | Target architecture, with Claude Code as the first harness | accepted |
+| [0005](0005-prototype-stack.md) | Prototype stack | accepted |

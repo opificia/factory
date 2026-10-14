@@ -4,7 +4,7 @@ This file is for AI coding agents working in the Opificia AI repository. Humans 
 
 ## What this repository is
 
-Opificia is an open-source software factory: agents turn tickets into reviewed, tested pull requests, on infrastructure and models the operator controls. The repository is in phase 0 (foundations). It contains policies and documentation, not product code. No language, framework or model has been chosen yet; do not assume one.
+Opificia is an open-source software factory: agents turn tickets into reviewed, tested pull requests, on infrastructure and models the operator controls. The repository is moving from phase 0 (foundations) to phase 1 (a first working loop). The target architecture is in [ADR-0004](docs/adr/0004-target-architecture.md) and the prototype stack in [ADR-0005](docs/adr/0005-prototype-stack.md): TypeScript on Node.js 24, NestJS, PostgreSQL with Prisma, Valkey, Better Auth, Vite and React, with Claude Code as the first harness. Use only what those ADRs list; anything else needs a new ADR (rule 5).
 
 ## Where things are
 
@@ -16,6 +16,7 @@ Opificia is an open-source software factory: agents turn tickets into reviewed, 
 | Decisions and roles | [`GOVERNANCE.md`](GOVERNANCE.md) |
 | Licence per folder | [`REUSE.toml`](REUSE.toml), [`docs/adr/0002-licensing-model.md`](docs/adr/0002-licensing-model.md) |
 | Architecture decisions | [`docs/adr/`](docs/adr/README.md) |
+| Target architecture and prototype stack | [ADR-0004](docs/adr/0004-target-architecture.md), [ADR-0005](docs/adr/0005-prototype-stack.md) |
 | Proposals | [`docs/rfcs/`](docs/rfcs/README.md) |
 | Vulnerabilities | [`SECURITY.md`](SECURITY.md) |
 | Name and logo | [`TRADEMARKS.md`](TRADEMARKS.md), [`brand/`](brand/README.md) |

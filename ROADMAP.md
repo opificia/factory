@@ -22,9 +22,9 @@ Done when: the policies are merged and the first maintainers are named.
 
 Build the smallest version of the factory that works end to end: one agent takes one ticket, writes a change in a sandbox, runs the tests and opens a pull request that a human reviews.
 
-- RFCs and ADRs for the core architecture, the model interface and the sandbox.
-- A first choice of language and runtime, recorded in an ADR.
-- The loop running fully self-hosted, with at least one open-weight model.
+- The target architecture, recorded in [ADR-0004](docs/adr/0004-target-architecture.md), and the prototype stack, recorded in [ADR-0005](docs/adr/0005-prototype-stack.md).
+- RFCs and ADRs for the harness contract, the model interface and the sandbox.
+- The loop running fully self-hosted on a single machine, with Claude Code as the first harness. Frontier models are well ahead of open-weight models today, and we want the strongest tools while we build.
 
 Done when: someone outside the core team can run the loop on their own machine from the documentation.
 
@@ -37,7 +37,8 @@ Make the loop dependable and safe to run on real code.
 - Tests that check each sovereignty commitment.
 - Plugin and SDK interfaces, under Apache-2.0.
 - A security review of the design.
-- **Opificia builds Opificia.** Once the loop works, we use it on our own tickets, running on open-weight models hosted in Europe. We publish how this compares with the AI tools we use today. We aim to do most of our own work on Opificia by the first release. See [How we build Opificia](SOVEREIGNTY.md#how-we-build-opificia).
+- A second harness that runs open-weight models, such as OpenCode, Mistral Vibe or Codex CLI, behind the same harness contract.
+- **Opificia builds Opificia.** Once the loop works, we use it on our own tickets: first with Claude Code, then also with the second harness on open-weight models hosted in Europe. We publish how the two compare. We aim to do most of our own work on Opificia by the first release. See [How we build Opificia](SOVEREIGNTY.md#how-we-build-opificia).
 
 Done when: the sovereignty commitments are accepted as ADRs and each one has an automated test.
 
@@ -51,8 +52,9 @@ Publish a first release that people can install and evaluate.
 - A release and support policy (see [`docs/community/release-policy.md`](docs/community/release-policy.md)).
 - A reference deployment on infrastructure from providers headquartered in Europe.
 - Most project work runs on Opificia itself, and the comparison from phase 2 is public.
+- The reference test suite passes with an open-weight model running locally and Claude Code switched off.
 
-Done when: version 0.1.0 is tagged, signed and documented.
+Done when: version 0.1.0 is tagged, signed and documented, and the reference test suite passes without Claude Code.
 
 ## After the first release
 

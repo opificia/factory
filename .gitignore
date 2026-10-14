@@ -15,3 +15,9 @@ $RECYCLE.BIN/
 .#*
 \#*#
 *.sublime-workspace
+
+# Local secrets and environment files. Commit only .env.example.
+.env
+.env.*
+!.env.example
+*.pem
