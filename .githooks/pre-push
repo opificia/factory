@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: The Opificia Authors
+# SPDX-License-Identifier: CC0-1.0
+#
+# Refuses a push when a commit lacks a Signed-off-by line that matches its
+# author's email. It runs the same check as the "DCO sign-off" CI job, so a
+# missing sign-off fails here, before the pull request. See CONTRIBUTING.md.
+
+set -euo pipefail
+
+zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"
+missing=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Deleting a remote branch: nothing to check.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch: check the commits that no remote branch has yet.
+    range=("$local_sha" --not --remotes)
+  else
+    range=("${remote_sha}..${local_sha}")
+  fi
+
+  for sha in $(git rev-list --no-merges "${range[@]}"); do
+    author_email="$(git show -s --format='%ae' "$sha")"
+    signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
+    if ! grep -qiF "<${author_email}>" <<< "$signoffs"; then
+      echo "missing sign-off: $(git show -s --format='%h %s' "$sha")" >&2
+      missing=1
+    fi
+  done
+done
+
+if [ "$missing" -ne 0 ]; then
+  echo >&2
+  echo "Push refused: some commits lack a Signed-off-by line matching the author's email." >&2
+  echo "Read the Developer Certificate of Origin, then sign off with: git signoff" >&2
+  echo "See CONTRIBUTING.md, section 'How to fix a missing sign-off'." >&2
+  exit 1
+fi
