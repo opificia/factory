@@ -18,7 +18,7 @@ Opificia AI is an open-source software factory: AI agents turn tickets into revi
 
 Opificia is a platform where AI agents pick up a ticket, write the change, run the tests and open a pull request. A human reviews that pull request and decides whether it is merged. You run Opificia on servers you choose, with models you choose, including open-weight models (models whose trained weights are published and can be run anywhere). Nothing in the design requires a service that we, or anyone else, host for you.
 
-Right now this repository holds the project's foundations: licences, policies and the way we make decisions. There is no product code yet.
+This repository holds the project's foundations, such as licences, policies and the way we make decisions, and a first prototype. The prototype runs the whole loop on one machine: from a labelled GitHub issue to a plan that a person approves, to a pull request that a person reviews. [`docs/prototype.md`](docs/prototype.md) explains how to run it.
 
 ## Why it exists
 
@@ -36,16 +36,17 @@ Organisations in Europe want to automate software work. Many of them also need t
 
 ## Status and roadmap
 
-We are in phase 0: foundations. [`ROADMAP.md`](ROADMAP.md) lists the phases ahead. There are no dates yet.
+We are moving from phase 0, foundations, to phase 1, a first working loop. A prototype of that loop runs today, with Claude Code as its first harness. [`ROADMAP.md`](ROADMAP.md) lists the phases ahead. There are no dates yet.
 
 ## Getting involved
 
-There is no code to contribute yet, but there is real work to do:
+There is early code and plenty of other work to do:
 
 - Join the conversation in [GitHub Discussions](https://github.com/opificia/factory/discussions).
 - Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before you open a pull request. Every commit needs a `Signed-off-by` line.
 - Propose larger changes as an RFC (a written proposal). See [`docs/rfcs/`](docs/rfcs/README.md).
-- Once code exists, issues labelled `good first issue` are a good place to start.
+- Try the prototype with [`docs/prototype.md`](docs/prototype.md) and tell us what breaks.
+- Issues labelled `good first issue` are a good place to start.
 
 Every factory needs a twelfth tooth.
 

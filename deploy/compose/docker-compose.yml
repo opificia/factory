@@ -1,0 +1,45 @@
+# Services for a single-node Opificia install in development: PostgreSQL and
+# Valkey. The server and the web app run on the host (see docs/prototype.md).
+# Images are pinned by digest (ADR-0005).
+name: opificia
+
+# Settings that stop components from contacting their vendors (ADR-0005). The
+# server reads them from .env while it runs on the host. A server service added
+# to this file must set them too.
+x-no-phone-home: &no-phone-home
+  CHECKPOINT_DISABLE: "1"
+  BETTER_AUTH_TELEMETRY: "0"
+
+services:
+  postgres:
+    # postgres 18.6
+    image: postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: opificia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opificia}
+      POSTGRES_DB: opificia
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opificia -d opificia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    # valkey/valkey 9.1.2. Notifications and cache only; holds no state that
+    # is not also in PostgreSQL, so it runs without persistence.
+    image: valkey/valkey@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${VALKEY_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

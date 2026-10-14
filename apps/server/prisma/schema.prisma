@@ -1,0 +1,248 @@
+// SPDX-FileCopyrightText: The Opificia Authors
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Database schema for the Opificia control plane (ADR-0005). Every table that
+// holds tenant data carries an organisation ID.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Authentication: the tables Better Auth needs, with the organization plugin.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String       @id
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false) @map("email_verified")
+  image         String?
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at")
+  sessions      Session[]
+  accounts      Account[]
+  members       Member[]
+  invitations   Invitation[]
+
+  @@map("users")
+}
+
+model Session {
+  id                   String   @id
+  expiresAt            DateTime @map("expires_at")
+  token                String   @unique
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  ipAddress            String?  @map("ip_address")
+  userAgent            String?  @map("user_agent")
+  userId               String   @map("user_id")
+  activeOrganizationId String?  @map("active_organization_id")
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+model Organization {
+  id            String               @id
+  name          String
+  slug          String               @unique
+  logo          String?
+  createdAt     DateTime             @map("created_at")
+  metadata      String?
+  members       Member[]
+  invitations   Invitation[]
+  installations ForgeInstallation[]
+  runs          Run[]
+
+  @@map("organizations")
+}
+
+model Member {
+  id             String       @id
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           String       @default("member")
+  createdAt      DateTime     @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("members")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String       @map("organization_id")
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime     @map("expires_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  inviterId      String       @map("inviter_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitations")
+}
+
+// ---------------------------------------------------------------------------
+// Forges
+// ---------------------------------------------------------------------------
+
+/// A GitHub App installation, linked to one organisation.
+model ForgeInstallation {
+  id             String       @id @default(uuid()) @db.Uuid
+  orgId          String       @map("org_id")
+  installationId BigInt       @unique @map("installation_id")
+  accountLogin   String       @map("account_login")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("forge_installations")
+}
+
+// ---------------------------------------------------------------------------
+// Runs: an event store with a projection, an outbox and command receipts.
+// ---------------------------------------------------------------------------
+
+/// Projection of a run's events. Rebuildable from run_events.
+model Run {
+  id             String       @id @db.Uuid
+  orgId          String       @map("org_id")
+  repo           String
+  installationId BigInt       @map("installation_id")
+  issueNumber    Int          @map("issue_number")
+  issueTitle     String       @map("issue_title")
+  issueUrl       String       @map("issue_url")
+  state          String
+  branch         String
+  sessionId      String?      @map("session_id") @db.Uuid
+  baseSha        String?      @map("base_sha")
+  plan           String?
+  revisions      Json         @default("[]")
+  headSha        String?      @map("head_sha")
+  prUrl          String?      @map("pr_url")
+  prNumber       Int?         @map("pr_number")
+  costUsd        Float        @default(0) @map("cost_usd")
+  budgetUsd      Float        @map("budget_usd")
+  deadlineAt     DateTime     @map("deadline_at")
+  lastSeq        Int          @map("last_seq")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([orgId, repo, issueNumber])
+  @@map("runs")
+}
+
+/// The source of truth for a run. Append only.
+model RunEvent {
+  id        BigInt   @id @default(autoincrement())
+  orgId     String   @map("org_id")
+  runId     String   @map("run_id") @db.Uuid
+  seq       Int
+  type      String
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([runId, seq])
+  @@index([orgId])
+  @@map("run_events")
+}
+
+/// Side effects to perform after an event is stored, at least once.
+model OutboxEffect {
+  id          BigInt    @id @default(autoincrement())
+  orgId       String    @map("org_id")
+  runId       String    @map("run_id") @db.Uuid
+  type        String
+  payload     Json
+  status      String    @default("pending")
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now()) @map("available_at")
+  leaseUntil  DateTime? @map("lease_until")
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  doneAt      DateTime? @map("done_at")
+
+  @@index([status, availableAt])
+  @@index([runId])
+  @@map("outbox_effects")
+}
+
+/// Makes commands idempotent: a command ID is handled once.
+model CommandReceipt {
+  commandId String   @id @map("command_id")
+  orgId     String   @map("org_id")
+  runId     String?  @map("run_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([orgId])
+  @@map("command_receipts")
+}
+
+/// One sandbox container for one stage of a run.
+model SandboxSession {
+  id          String    @id @db.Uuid
+  orgId       String    @map("org_id")
+  runId       String    @map("run_id") @db.Uuid
+  stage       String
+  tokenHash   String    @unique @map("token_hash")
+  /// The task sent to the runner when it says hello.
+  task        Json
+  containerId String?   @map("container_id")
+  status      String    @default("starting")
+  exitCode    Int?      @map("exit_code")
+  helloAt     DateTime? @map("hello_at")
+  endedAt     DateTime? @map("ended_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([runId])
+  @@index([status])
+  @@map("sandbox_sessions")
+}

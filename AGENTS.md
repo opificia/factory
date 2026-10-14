@@ -4,7 +4,7 @@ This file is for AI coding agents working in the Opificia AI repository. Humans 
 
 ## What this repository is
 
-Opificia is an open-source software factory: agents turn tickets into reviewed, tested pull requests, on infrastructure and models the operator controls. The repository is moving from phase 0 (foundations) to phase 1 (a first working loop). The target architecture is in [ADR-0004](docs/adr/0004-target-architecture.md) and the prototype stack in [ADR-0005](docs/adr/0005-prototype-stack.md): TypeScript on Node.js 24, NestJS, PostgreSQL with Prisma, Valkey, Better Auth, Vite and React, with Claude Code as the first harness. Use only what those ADRs list; anything else needs a new ADR (rule 5).
+Opificia is an open-source software factory: agents turn tickets into reviewed, tested pull requests, on infrastructure and models the operator controls. The repository is moving from phase 0 (foundations) to phase 1 (a first working loop). A prototype of the loop exists; [`docs/prototype.md`](docs/prototype.md) explains how to run it and how it fits together. The target architecture is in [ADR-0004](docs/adr/0004-target-architecture.md) and the prototype stack in [ADR-0005](docs/adr/0005-prototype-stack.md): TypeScript on Node.js 24, NestJS, PostgreSQL with Prisma, Valkey, Better Auth, Vite and React, with Claude Code as the first harness. Use only what those ADRs list; anything else needs a new ADR (rule 5).
 
 ## Where things are
 
@@ -17,6 +17,7 @@ Opificia is an open-source software factory: agents turn tickets into reviewed, 
 | Licence per folder | [`REUSE.toml`](REUSE.toml), [`docs/adr/0002-licensing-model.md`](docs/adr/0002-licensing-model.md) |
 | Architecture decisions | [`docs/adr/`](docs/adr/README.md) |
 | Target architecture and prototype stack | [ADR-0004](docs/adr/0004-target-architecture.md), [ADR-0005](docs/adr/0005-prototype-stack.md) |
+| Running the prototype | [`docs/prototype.md`](docs/prototype.md) |
 | Proposals | [`docs/rfcs/`](docs/rfcs/README.md) |
 | Vulnerabilities | [`SECURITY.md`](SECURITY.md) |
 | Name and logo | [`TRADEMARKS.md`](TRADEMARKS.md), [`brand/`](brand/README.md) |
@@ -37,6 +38,19 @@ Opificia is an open-source software factory: agents turn tickets into reviewed, 
 ## Writing style
 
 Plain European English, short sentences, sentence-case headings. "We" is the project, "you" is the reader. No emoji, no exclamation marks, no hype words. Do not make claims about legal conformity, audits or readiness for production that the project cannot back up. Write "Opificia AI" on first mention in a document, "Opificia" after that.
+
+## Building and testing the code
+
+The code is a pnpm workspace: `apps/server`, `apps/web`, `sdk/contracts`, `sdk/runner` and `plugins/harness-claude`. Use Node.js 24 and pnpm 12.
+
+```sh
+pnpm install
+pnpm build       # also generates the Prisma client
+pnpm typecheck
+pnpm test        # Vitest
+```
+
+Keep the run lifecycle in `apps/server/src/runs/decider.ts` pure, and test it there. Change the database only through a Prisma migration (`pnpm db:migrate`). The runner protocol in `sdk/contracts` is version 0 and unstable; change the server and the harness together.
 
 ## Running the hygiene checks locally
 

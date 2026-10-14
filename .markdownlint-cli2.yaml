@@ -2,3 +2,6 @@
 ignores:
   # Copied verbatim from the Contributor Covenant 3.0; we do not restyle it.
   - "CODE_OF_CONDUCT.md"
+  # Installed packages and build output.
+  - "**/node_modules/**"
+  - "**/dist/**"

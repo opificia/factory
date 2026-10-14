@@ -2,7 +2,11 @@
 
 This is the index of the Opificia AI documentation. Documentation in this folder is licensed under CC-BY-4.0.
 
-Opificia has no product code yet, so the documentation covers how the project works and how decisions are made. User and operator documentation will follow in later phases (see [`ROADMAP.md`](../ROADMAP.md)).
+Most of the documentation covers how the project works and how decisions are made. Full user and operator documentation will follow in later phases (see [`ROADMAP.md`](../ROADMAP.md)).
+
+## Using Opificia
+
+- [Run the prototype](prototype.md): the first working loop on your own machine, and how it fits together.
 
 ## Decisions and proposals
 
