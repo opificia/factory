@@ -14,6 +14,11 @@ const Env = z.object({
   GITHUB_APP_CLIENT_ID: z.string().min(1),
   GITHUB_APP_CLIENT_SECRET: z.string().min(1),
   GITHUB_APP_PRIVATE_KEY_PATH: z.string().min(1),
+  /** People who may assign the GitHub App's installations to organisations. */
+  OPIFICIA_OPERATOR_EMAILS: z
+    .string()
+    .default("")
+    .transform((v) => v.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)),
   ANTHROPIC_API_KEY: z.string().min(1),
   OPIFICIA_ANTHROPIC_UPSTREAM: z.url().default("https://api.anthropic.com"),
   OPIFICIA_ROLE: z.enum(["api", "worker", "all"]).default("all"),
@@ -29,6 +34,10 @@ const Env = z.object({
   OPIFICIA_PLAN_MODEL: z.string().default("claude-opus-5-5"),
   OPIFICIA_IMPLEMENT_MODEL: z.string().default("claude-sonnet-5-5"),
   OPIFICIA_MAX_TURNS: z.coerce.number().int().positive().default(80),
+  /** Model requests one sandbox stage may make through the proxy. */
+  OPIFICIA_MAX_MODEL_REQUESTS: z.coerce.number().int().positive().default(400),
+  /** "closed" stops new sign-ups once the operator has an account. */
+  OPIFICIA_SIGNUP: z.enum(["open", "closed"]).default("open"),
   OPIFICIA_GIT_AUTHOR_NAME: z.string().default("Opificia"),
   OPIFICIA_GIT_AUTHOR_EMAIL: z.string().default("opificia@localhost"),
 });

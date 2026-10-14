@@ -35,6 +35,7 @@ type ActiveSession = {
   tokenHash: string;
   socket?: WebSocket;
   events: number;
+  modelRequests: number;
 };
 
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -183,11 +184,17 @@ export class SessionsService {
     }
   }
 
-  /** Checks a model request's token. Only sessions that said hello may use the model. */
-  authorizeModel(sessionId: string, token: string): ActiveSession | undefined {
+  /**
+   * Checks a model request's token. Only sessions that said hello may use the
+   * model, and only up to a fixed number of requests. The harness enforces the
+   * USD budget itself; this cap holds even if the agent bypasses the harness
+   * and calls the proxy directly.
+   */
+  authorizeModel(sessionId: string, token: string): { session: ActiveSession; overLimit: boolean } | undefined {
     const session = this.active.get(sessionId);
     if (!session || !sameHash(session.tokenHash, hashToken(token))) return undefined;
-    return session;
+    session.modelRequests += 1;
+    return { session, overLimit: session.modelRequests > this.config.OPIFICIA_MAX_MODEL_REQUESTS };
   }
 
   /** Serves the runner protocol on one WebSocket connection. */
@@ -268,7 +275,15 @@ export class SessionsService {
     this.logger.log(`run ${session.runId}: ${hello.harness.name} ${hello.harness.version} connected for ${session.stage}`);
     return {
       task: RunnerTask.parse(session.task),
-      session: { sessionId: session.id, runId: session.runId, orgId: session.orgId, stage: session.stage as Stage, tokenHash, events: 0 },
+      session: {
+        sessionId: session.id,
+        runId: session.runId,
+        orgId: session.orgId,
+        stage: session.stage as Stage,
+        tokenHash,
+        events: 0,
+        modelRequests: 0,
+      },
     };
   }
 

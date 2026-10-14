@@ -19,6 +19,7 @@ import { AUTH, type Auth } from "./auth.js";
 export type Actor = {
   userId: string;
   userName: string;
+  userEmail: string;
   orgId: string;
   role: string;
 };
@@ -44,7 +45,13 @@ export class SessionGuard implements CanActivate {
     if (!orgId) throw new ForbiddenException("choose an organisation first");
     const member = await this.prisma.member.findFirst({ where: { organizationId: orgId, userId: session.user.id } });
     if (!member) throw new ForbiddenException("you are not a member of this organisation");
-    request.actor = { userId: session.user.id, userName: session.user.name, orgId, role: member.role };
+    request.actor = {
+      userId: session.user.id,
+      userName: session.user.name,
+      userEmail: session.user.email,
+      orgId,
+      role: member.role,
+    };
     return true;
   }
 }

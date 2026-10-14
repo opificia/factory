@@ -19,11 +19,14 @@ export function createAuth(config: Config, prisma: PrismaService) {
     secret: config.BETTER_AUTH_SECRET,
     trustedOrigins: [new URL(config.BETTER_AUTH_URL).origin],
     database: prismaAdapter(prisma, { provider: "postgresql" }),
-    emailAndPassword: { enabled: true, minPasswordLength: 12 },
+    // Email addresses are not verified in the prototype. Close sign-up with
+    // OPIFICIA_SIGNUP=closed once the operator has an account.
+    emailAndPassword: { enabled: true, minPasswordLength: 12, disableSignUp: config.OPIFICIA_SIGNUP === "closed" },
     socialProviders: {
       github: {
         clientId: config.GITHUB_APP_CLIENT_ID,
         clientSecret: config.GITHUB_APP_CLIENT_SECRET,
+        disableSignUp: config.OPIFICIA_SIGNUP === "closed",
       },
     },
     plugins: [organization()],

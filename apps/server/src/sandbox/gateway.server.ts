@@ -78,10 +78,17 @@ export class SandboxGateway implements OnModuleDestroy {
     }
     const [, sessionId, path] = match as unknown as [string, string, string];
     const presented = req.headers["x-api-key"] ?? req.headers.authorization?.replace(/^Bearer\s+/i, "");
-    const session = typeof presented === "string" ? this.sessions.authorizeModel(sessionId, presented) : undefined;
-    if (!session) {
+    const access = typeof presented === "string" ? this.sessions.authorizeModel(sessionId, presented) : undefined;
+    if (!access) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "unknown sandbox session" } }));
+      return;
+    }
+    const { session } = access;
+    if (access.overLimit) {
+      this.logger.warn(`run ${session.runId}: refused a model request over the limit for this stage`);
+      res.writeHead(429, { "content-type": "application/json" });
+      res.end(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: "this run has used all its model requests" } }));
       return;
     }
     if (!ALLOWED_MODEL_PATHS.some((p) => p.test(path))) {

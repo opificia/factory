@@ -33,7 +33,8 @@ Fill in `.env`:
 
 - `BETTER_AUTH_SECRET`: generate it with `openssl rand -base64 32`;
 - the four `GITHUB_APP_*` values from step 1;
-- `ANTHROPIC_API_KEY`: your own key.
+- `ANTHROPIC_API_KEY`: your own key;
+- `OPIFICIA_OPERATOR_EMAILS`: the email address you will sign up with. Only these people can link the GitHub App's installations to an organisation.
 
 Keep `CHECKPOINT_DISABLE=1` and `BETTER_AUTH_TELEMETRY=0`. They stop Prisma and Better Auth from contacting their vendors. `.env` is ignored by git; never commit it.
 
@@ -117,7 +118,9 @@ This is a prototype. In particular:
 
 - A plain container is not a strong security boundary. Stronger isolation, such as gVisor, comes later (ADR-0004, step 2).
 - The issue text reaches the model. Someone who can write issues in your repository can try to steer the agent. The plan approval and the checks above limit the damage, but do not label issues from people you do not trust.
-- Any organisation in your install can link any installation of your GitHub App. That is fine for one operator; a shared install needs more.
+- Only the people in `OPIFICIA_OPERATOR_EMAILS` can link installations of your GitHub App. A shared install also needs to check each person's own access on GitHub.
+- Email addresses are not verified. Set `OPIFICIA_SIGNUP=closed` once you have created your account, so nobody else can sign up.
+- The harness enforces the USD budget inside the sandbox. The model proxy only caps the number of model requests per stage (`OPIFICIA_MAX_MODEL_REQUESTS`). An agent that bypasses the harness can spend more than the budget, up to that cap. Metering spend in the proxy comes later.
 - The server polls GitHub; webhooks come later.
 - Only the `claude` harness exists. A second harness for open-weight models is planned for phase 2.
 - The runner protocol is version 0 and will change. An RFC will specify it.

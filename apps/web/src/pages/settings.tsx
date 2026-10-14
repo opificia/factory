@@ -43,7 +43,11 @@ export function SettingsPage() {
               )}
             </li>
           ))}
-          {installations.data?.length === 0 && <li className="py-2 text-sm text-slate-500">The GitHub App is not installed anywhere yet.</li>}
+          {installations.data?.length === 0 && (
+            <li className="py-2 text-sm text-slate-500">
+              No installations to show. The GitHub App may not be installed yet, or only the operator can link it.
+            </li>
+          )}
         </ul>
       </Card>
       <Card title="Repositories">
