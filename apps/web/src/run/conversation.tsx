@@ -294,7 +294,7 @@ function PullRequestCard({ event, prState }: { event: RunEventDto; prState: PrSt
         </span>
         <span className="block truncate font-mono text-[11px] text-ink-faint">{event.data.branch}</span>
       </span>
-      <span className="ml-auto text-xs font-medium text-ink-muted group-hover:text-ink">{merged || closed ? "View" : "Review"} on GitHub →</span>
+      <span className="ml-auto shrink-0 text-xs font-medium whitespace-nowrap text-ink-muted group-hover:text-ink">{merged || closed ? "View" : "Review"} on GitHub →</span>
     </a>
   );
 }
@@ -489,7 +489,7 @@ function StageBlock({
                 <span className="relative h-2 w-2 rounded-full bg-run" />
               </span>
             )}
-            <span className="font-medium">
+            <span className="shrink-0 font-medium whitespace-nowrap">
               {running ? "Working for " : "Worked for "}
               <span className="tabular-nums">
                 <StageClock stage={stage} />

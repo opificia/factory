@@ -60,9 +60,10 @@ Tests and the typecheck do not show how a page looks. When you change `apps/web`
 pnpm --filter @opificia/contracts build
 pnpm --filter @opificia/web screenshot                   # every state, light and dark, and 400px wide
 pnpm --filter @opificia/web screenshot /runs/<id> /      # only these pages
+pnpm --filter @opificia/web screenshot /runs/<id> --bottom --width 400   # the end of a page, 400px wide
 ```
 
-The command runs the web app in fixture mode (`apps/web/fixtures`), with recorded runs in every state and no server, and prints the paths of the screenshots. Open the ones your change affects and look at them: layout, spacing, light and dark, and narrow screens. Fix what looks wrong and take them again. Say in your summary which screenshots you checked. If your change needs a state the fixtures do not have, add a scenario to `apps/web/fixtures/plugin.ts`.
+The command runs the web app in fixture mode (`apps/web/fixtures`), with recorded runs in every state and no server, and prints the paths of the screenshots. Open the ones your change affects and look at them: layout, spacing, light and dark, and 400 pixels wide. A run page scrolls inside the app, so use `--bottom` for what is at the end of it, such as the checks and the pull request. Fix what looks wrong and take them again. Say in your summary which screenshots you checked. If your change needs a state the fixtures do not have, add a scenario to `apps/web/fixtures/plugin.ts`.
 
 Follow the look that is there: the colour tokens in `apps/web/src/styles.css` (navy and slate; gold only for what needs a person; colour only for attention, work in progress and failure), the components in `apps/web/src/ui.tsx`, and icons from `lucide-react`.
 
