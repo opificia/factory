@@ -4,10 +4,10 @@
 import { RunSummary } from "@opificia/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { api, authClient } from "./lib.ts";
-import { DONE_PAGE, SHORT_STATE, groupRuns, repositories, shortAge } from "./run-list.ts";
+import { DONE_PAGE, SECTIONS, SHORT_STATE, groupRuns, repositories, shortAge } from "./run-list.ts";
 import { ErrorText } from "./ui.tsx";
 
 export function useRuns() {
@@ -18,24 +18,39 @@ export function useRuns() {
   });
 }
 
-function RunRow({ run, current, showAge }: { run: RunSummary; current: boolean; showAge: boolean }) {
-  const working = !["awaiting_approval", "pr_opened", "failed", "cancelled"].includes(run.state);
+/** The current time, updated every half minute, so short ages stay right between changes. */
+function useNow(): number {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function RunRow({ run, current, now, showAge }: { run: RunSummary; current: boolean; now: number; showAge: boolean }) {
+  const working = (SECTIONS.working as readonly string[]).includes(run.state);
   const statusStyle =
     run.state === "awaiting_approval" ? "text-amber-700" : working ? "text-blue-700" : run.state === "failed" ? "text-red-700" : "text-slate-500";
+  // Two lines: the sidebar is too narrow for the title and the details on one.
   return (
     <Link
       to="/runs/$runId"
       params={{ runId: run.id }}
       title={run.issueTitle}
-      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-100 ${current ? "bg-slate-100" : ""}`}
+      className={`block rounded-md px-2 py-1.5 text-sm hover:bg-slate-100 ${current ? "bg-slate-100" : ""}`}
     >
-      {working && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-500" />}
-      <span className="min-w-0 flex-1 truncate text-slate-900">{run.issueTitle}</span>
-      <span className="shrink-0 text-xs text-slate-500">
-        {run.repo}#{run.issueNumber}
+      <span className="flex items-center gap-2">
+        {working && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-500" />}
+        <span className="min-w-0 flex-1 truncate text-slate-900">{run.issueTitle}</span>
       </span>
-      <span className={`shrink-0 text-xs font-medium ${statusStyle}`}>{SHORT_STATE[run.state]}</span>
-      {showAge && <span className="w-8 shrink-0 text-right text-xs tabular-nums text-slate-500">{shortAge(run.updatedAt, Date.now())}</span>}
+      <span className="mt-0.5 flex items-center gap-2 text-xs">
+        <span className="min-w-0 truncate text-slate-500">
+          {run.repo}#{run.issueNumber}
+        </span>
+        <span className={`ml-auto shrink-0 font-medium ${statusStyle}`}>{SHORT_STATE[run.state]}</span>
+        {showAge && <span className="shrink-0 tabular-nums text-slate-500">{shortAge(run.updatedAt, now)}</span>}
+      </span>
     </Link>
   );
 }
@@ -54,6 +69,7 @@ export function Sidebar({ userName }: { userName: string }) {
   const { runId } = useParams({ strict: false });
   const [selectedRepo, setRepo] = useState<string | null>(null);
   const [doneShown, setDoneShown] = useState(DONE_PAGE);
+  const now = useNow();
 
   const all = runs.data ?? [];
   const repos = repositories(all);
@@ -85,21 +101,21 @@ export function Sidebar({ userName }: { userName: string }) {
         {groups.needsYou.length > 0 && (
           <Section title="Needs you" className="text-amber-700">
             {groups.needsYou.map((run) => (
-              <RunRow key={run.id} run={run} current={run.id === runId} showAge={false} />
+              <RunRow key={run.id} run={run} current={run.id === runId} now={now} showAge={false} />
             ))}
           </Section>
         )}
         {groups.working.length > 0 && (
           <Section title="Working" className="text-blue-700">
             {groups.working.map((run) => (
-              <RunRow key={run.id} run={run} current={run.id === runId} showAge />
+              <RunRow key={run.id} run={run} current={run.id === runId} now={now} showAge />
             ))}
           </Section>
         )}
         {groups.done.length > 0 && (
           <Section title="Done" className="text-slate-500">
             {groups.done.slice(0, doneShown).map((run) => (
-              <RunRow key={run.id} run={run} current={run.id === runId} showAge />
+              <RunRow key={run.id} run={run} current={run.id === runId} now={now} showAge />
             ))}
             {groups.done.length > doneShown && (
               <button className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900" onClick={() => setDoneShown(doneShown + DONE_PAGE)}>
