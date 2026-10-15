@@ -4,7 +4,9 @@
 #
 #   REUSE lint         every file has copyright and licence information (REUSE.toml)
 #   markdownlint       Markdown style (.markdownlint.yaml)
-#   Link check         links in Markdown files (.lychee.toml); also weekly
+#   Link check         links in Markdown files (.lychee.toml). Links inside the
+#                      repository always; external links only in changed files on
+#                      pull requests, and in every file on main and weekly
 #   DCO sign-off       every commit has a Signed-off-by line (pull requests only);
 #                      a bot's commits may carry a maintainer's instead (ADR-0006)
 #   Pull request title Conventional Commits, since squash merges use the title
@@ -65,10 +67,42 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Run lychee
+      # Files and anchors inside the repository. Needs no network, so it is
+      # fast and never flaky.
+      - name: Check links inside the repository
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
-          args: --config .lychee.toml --no-progress "./**/*.md"
+          args: --config .lychee.toml --offline --no-progress "./**/*.md"
+          fail: true
+          jobSummary: true
+          format: markdown
+      # A slow external host can hold a run up for minutes, and a pull request
+      # rarely breaks a link it does not touch. Pull requests check external
+      # links only in the Markdown files they change. Pushes to main, the
+      # weekly run and manual runs check every file. The action passes its
+      # arguments through the shell, so only plain file names are used.
+      - name: Choose the files for the external links
+        id: files
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            echo 'files="./**/*.md"' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+            --jq '.[] | select(.status != "removed" and (.filename | endswith(".md"))) | .filename')"
+          files="$(grep -E '^[A-Za-z0-9._/-]+$' <<< "$changed" | sed 's#^#./#' | tr '\n' ' ' || true)"
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "Markdown files to check: ${files:-none}"
+      - name: Check external links
+        if: steps.files.outputs.files != ''
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --config .lychee.toml --no-progress ${{ steps.files.outputs.files }}
           fail: true
           jobSummary: true
           format: markdown
