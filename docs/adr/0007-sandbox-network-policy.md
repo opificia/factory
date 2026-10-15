@@ -1,6 +1,6 @@
 # ADR-0007: Sandbox network policy, with a decision model for unknown hosts
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-15
 - **Deciders:** the maintainers, with the project steward as architecture owner
 - **Related:** [ADR-0004](0004-target-architecture.md), [ADR-0005](0005-prototype-stack.md), [`AGENTS.md`](../../AGENTS.md) rule 5, [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md)

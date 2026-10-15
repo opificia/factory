@@ -30,7 +30,7 @@ export const IssueRef = z.object({
 export type IssueRef = z.infer<typeof IssueRef>;
 
 export const CheckFinding = z.object({
-  rule: z.enum(["protected_path", "size", "secret", "hidden_unicode", "submodule", "history"]),
+  rule: z.enum(["protected_path", "size", "secret", "hidden_unicode", "submodule", "history", "commit"]),
   path: z.string().optional(),
   message: z.string(),
 });

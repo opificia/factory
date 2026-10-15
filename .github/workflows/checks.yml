@@ -5,7 +5,8 @@
 #   REUSE lint         every file has copyright and licence information (REUSE.toml)
 #   markdownlint       Markdown style (.markdownlint.yaml)
 #   Link check         links in Markdown files (.lychee.toml); also weekly
-#   DCO sign-off       every commit has a Signed-off-by line (pull requests only)
+#   DCO sign-off       every commit has a Signed-off-by line (pull requests only);
+#                      a bot's commits may carry a maintainer's instead (ADR-0006)
 #   Pull request title Conventional Commits, since squash merges use the title
 #
 # Scorecard, Labels and Website stay in their own workflows: they run on other
@@ -86,10 +87,25 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Run the check as the base branch has it, so a pull request cannot
+          # change the check that judges it.
+          if git cat-file -e "${BASE_SHA}:.github/scripts/dco-check.sh" 2>/dev/null; then
+            scripts="$RUNNER_TEMP/dco-scripts"
+            mkdir -p "$scripts"
+            for f in dco-check.sh maintainers.sh signoff-reviews.sh; do
+              git show "${BASE_SHA}:.github/scripts/$f" > "$scripts/$f"
+            done
+            chmod +x "$scripts"/*.sh
+            exec "$scripts/dco-check.sh"
+          fi
+          # A base branch without the script gets the strict check: every
+          # commit, merges included, needs its author's own sign-off.
           missing=0
-          for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
+          for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
             author_email="$(git show -s --format='%ae' "$sha")"
             signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
             if grep -qiF "<${author_email}>" <<< "$signoffs"; then

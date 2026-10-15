@@ -98,12 +98,13 @@ Each run has a budget of 15 USD and 60 minutes of agent time; the time spent wai
 
 **The server checks the result before it pushes.** These checks do not depend on the model:
 
-- no changes to CI workflows, `CODEOWNERS`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` or `.claude/`;
+- no changes to CI workflows and scripts, `CODEOWNERS`, `MAINTAINERS.md`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` or `.claude/`;
 - no new submodules;
 - at most 50 files and 2,000 changed lines;
 - no strings that look like API keys, tokens or private keys;
 - no invisible or bidirectional Unicode characters;
-- the branch must build on the commit the plan was made for.
+- the branch must build on the commit the plan was made for;
+- no merge commits, and every commit has `OPIFICIA_GIT_AUTHOR_EMAIL` as its author and committer, and no `Signed-off-by` line. The agent writes its own commits, so it could otherwise claim to be someone else, or sign off for a person.
 
 If any check fails, the run fails and nothing is pushed.
 

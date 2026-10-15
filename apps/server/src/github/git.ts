@@ -12,7 +12,7 @@ import { execFile } from "node:child_process";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { ChangeSummary } from "../checks/checker.js";
+import type { ChangeSummary, CommitInfo } from "../checks/checker.js";
 import { parseAddedLines, parseNumstat, parseRawModes } from "../checks/checker.js";
 
 const run = promisify(execFile);
@@ -61,6 +61,9 @@ async function initBare(dir: string): Promise<void> {
   await git(dir, ["init", "--quiet", "--bare"]);
 }
 
+/** More commits than this on an agent's branch fail the checks. */
+const MAX_COMMITS = 200;
+
 const remoteUrl = (fullName: string) => `https://github.com/${fullName}.git`;
 
 /** Fetches the default branch into the cache and returns its commit. */
@@ -105,10 +108,19 @@ export async function loadResult(input: {
   const numstat = parseNumstat(await git(checkDir, ["diff", "--numstat", "-z", "-M", ...range]));
   const modes = parseRawModes(await git(checkDir, ["diff", "--raw", "-z", "-M", ...range]));
   const addedLines = parseAddedLines(await git(checkDir, ["diff", "--unified=0", "--no-color", "--no-ext-diff", "-M", ...range]));
+
+  const shas = (await git(checkDir, ["rev-list", `--max-count=${MAX_COMMITS + 1}`, `${baseSha}..${head}`])).split("\n").filter(Boolean);
+  if (shas.length > MAX_COMMITS) throw new Error(`the branch has more than ${MAX_COMMITS} commits`);
+  const commits: CommitInfo[] = [];
+  for (const sha of shas) {
+    const [authorEmail = "", committerEmail = "", parents = "", ...message] = (await git(checkDir, ["show", "-s", "--format=%ae%x00%ce%x00%P%x00%B", sha])).split("\0");
+    commits.push({ sha, parents: parents.split(" ").filter(Boolean).length, authorEmail, committerEmail, message: message.join("\0") });
+  }
   return {
     files: numstat.map((f) => ({ ...f, mode: modes.get(f.path) ?? "100644" })),
     addedLines,
     basedOnBase,
+    commits,
   };
 }
 

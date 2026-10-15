@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Paths an agent must not change: CI workflows, code owners and the files that
- * instruct agents. The harness blocks edits to them, and the control plane
+ * Paths an agent must not change: CI workflows and scripts, code owners, the
+ * list of maintainers who may sign off (ADR-0006) and the files that instruct
+ * agents. The harness blocks edits to them, and the control plane
  * checks the result again before it pushes.
  */
 export const DEFAULT_PROTECTED_PATHS: readonly string[] = [
   ".github/workflows/**",
   ".github/actions/**",
+  ".github/scripts/**",
   "CODEOWNERS",
   ".github/CODEOWNERS",
   "docs/CODEOWNERS",
+  "MAINTAINERS.md",
   "**/AGENTS.md",
   "**/CLAUDE.md",
   ".mcp.json",

@@ -12,7 +12,16 @@ import {
   type ChangeSummary,
 } from "./checker.js";
 
-const limits = { ...DEFAULT_LIMITS, protectedPaths: DEFAULT_PROTECTED_PATHS };
+const BOT = "12345+opificia-bot[bot]@users.noreply.github.com";
+const limits = { ...DEFAULT_LIMITS, protectedPaths: DEFAULT_PROTECTED_PATHS, commitEmail: BOT };
+const commit = (extra: Partial<ChangeSummary["commits"][number]> = {}) => ({
+  sha: "0123456789abcdef",
+  parents: 1,
+  authorEmail: BOT,
+  committerEmail: BOT,
+  message: "feat: add x\n\nAssisted-by: Claude Code/claude-opus-5-5\n",
+  ...extra,
+});
 const file = (path: string, extra: Partial<ChangeSummary["files"][number]> = {}) => ({
   path,
   additions: 1,
@@ -23,11 +32,47 @@ const file = (path: string, extra: Partial<ChangeSummary["files"][number]> = {})
 });
 
 describe("checkChange", () => {
+  it("refuses commits by anyone but the factory, and any sign-off", () => {
+    const findings = checkChange(
+      {
+        files: [file("src/text.ts")],
+        addedLines: [],
+        basedOnBase: true,
+        commits: [
+          commit(),
+          commit({ sha: "1111111aaaa", authorEmail: "bram@xlab.be" }),
+          commit({ sha: "2222222bbbb", committerEmail: "BRAM@xlab.be" }),
+          commit({ sha: "3333333cccc", message: "fix: y\n\nsigned-off-by: Bram De Backer <bram@xlab.be>\n" }),
+          commit({ sha: "4444444dddd", message: "fix: z\u202e\n" }),
+          commit({ sha: "5555555eeee", parents: 2 }),
+        ],
+      },
+      limits,
+    );
+    expect(findings.map((f) => f.rule)).toEqual(["commit", "commit", "commit", "hidden_unicode", "history"]);
+    expect(findings[0]?.message).toBe(`commit 1111111 has the author bram@xlab.be; only ${BOT} may commit`);
+    expect(findings[1]?.message).toBe(`commit 2222222 has the committer BRAM@xlab.be; only ${BOT} may commit`);
+    expect(findings[2]?.message).toBe("commit 3333333 carries a Signed-off-by line; only a person may sign off");
+    expect(findings[3]?.message).toContain("commit 4444444");
+    expect(findings[4]?.message).toContain("commit 5555555 is a merge");
+  });
+
+  it("accepts the factory's email in any case", () => {
+    const change: ChangeSummary = {
+      files: [file("src/text.ts")],
+      addedLines: [],
+      basedOnBase: true,
+      commits: [commit({ authorEmail: BOT.toUpperCase() })],
+    };
+    expect(checkChange(change, limits)).toEqual([]);
+  });
+
   it("passes an ordinary change", () => {
     const change: ChangeSummary = {
       files: [file("src/text.ts"), file("src/text.test.ts")],
       addedLines: [{ path: "src/text.ts", text: "export const x = 1;" }],
       basedOnBase: true,
+      commits: [],
     };
     expect(checkChange(change, limits)).toEqual([]);
   });
@@ -38,6 +83,7 @@ describe("checkChange", () => {
         files: [file(".github/workflows/ci.yml"), file("docs/agents.md", { oldPath: "AGENTS.md" })],
         addedLines: [],
         basedOnBase: true,
+        commits: [],
       },
       limits,
     );
@@ -58,6 +104,7 @@ describe("checkChange", () => {
           { path: "b.ts", text: "-----BEGIN RSA " + "PRIVATE KEY-----" },
         ],
         basedOnBase: true,
+        commits: [],
       },
       limits,
     );
@@ -66,13 +113,13 @@ describe("checkChange", () => {
   });
 
   it("finds hidden characters in file names", () => {
-    const findings = checkChange({ files: [file("src/admin\u202E.ts")], addedLines: [], basedOnBase: true }, limits);
+    const findings = checkChange({ files: [file("src/admin\u202E.ts")], addedLines: [], basedOnBase: true, commits: [] }, limits);
     expect(findings).toEqual([expect.objectContaining({ rule: "hidden_unicode" })]);
   });
 
   it("finds tag characters used to smuggle text", () => {
     const findings = checkChange(
-      { files: [file("a.md")], addedLines: [{ path: "a.md", text: "hello\u{E0041}" }], basedOnBase: true },
+      { files: [file("a.md")], addedLines: [{ path: "a.md", text: "hello\u{E0041}" }], basedOnBase: true, commits: [] },
       limits,
     );
     expect(findings).toHaveLength(1);
@@ -81,7 +128,7 @@ describe("checkChange", () => {
   it("enforces size limits, submodules and history", () => {
     const many = Array.from({ length: 51 }, (_, i) => file(`f${i}.ts`, { additions: 50 }));
     const findings = checkChange(
-      { files: [...many, file("vendor/lib", { mode: "160000" })], addedLines: [], basedOnBase: false },
+      { files: [...many, file("vendor/lib", { mode: "160000" })], addedLines: [], basedOnBase: false, commits: [] },
       limits,
     );
     expect(findings.map((f) => f.rule).sort()).toEqual(["history", "size", "size", "submodule"]);

@@ -4,11 +4,13 @@ This file lists the maintainers of Opificia AI, their affiliation and the areas 
 
 Affiliation is the organisation that employs or pays the maintainer for their work on Opificia, or "Independent". Maintainers keep it up to date.
 
+The email address is the one a maintainer signs off with. The sign-off workflow uses it when a maintainer approves a pull request with `/signoff` ([ADR-0006](docs/adr/0006-sign-off-by-approval.md)).
+
 ## Active maintainers
 
-| Name | Handle | Affiliation | Areas |
-| --- | --- | --- | --- |
-| *Name to be added* | `@handle` | *Affiliation* | *For example: governance, documentation* |
+| Name | Handle | Email | Affiliation | Areas |
+| --- | --- | --- | --- | --- |
+| Bram De Backer | `@bramdeba` | `bram@xlab.be` | Experience Lab BV | Architecture, governance |
 
 ## Steering team
 

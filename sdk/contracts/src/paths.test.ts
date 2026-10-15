@@ -24,9 +24,11 @@ describe("globToRegExp", () => {
 });
 
 describe("matchProtectedPath", () => {
-  it("protects workflows, agent instructions and code owners", () => {
+  it("protects workflows, scripts, agent instructions, code owners and maintainers", () => {
     for (const p of [
       ".github/workflows/release.yml",
+      ".github/scripts/signoff.sh",
+      "MAINTAINERS.md",
       "./AGENTS.md",
       "/CLAUDE.md",
       "packages/x/CLAUDE.md",
