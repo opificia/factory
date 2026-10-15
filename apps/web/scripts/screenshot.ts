@@ -7,6 +7,7 @@
  *
  *   pnpm --filter @opificia/web screenshot                 the standard set
  *   pnpm --filter @opificia/web screenshot /runs/<id> /    these pages
+ *     --bottom                  scroll to the end of each page first
  *     --theme light|dark|both   (default both)
  *     --width 1440              (default 1440; the standard set adds 400)
  *     --out <dir>               (default apps/web/screenshots)
@@ -79,14 +80,20 @@ async function fixtureServer(): Promise<ViteDevServer | undefined> {
 }
 
 async function main() {
-  const paths = process.argv.slice(2).filter((a, i, all) => a.startsWith("/") && !all[i - 1]?.startsWith("--"));
+  const paths = process.argv.slice(2).filter((a, i, all) => a.startsWith("/") && !(all[i - 1]?.startsWith("--") && all[i - 1] !== "--bottom"));
+  const bottom = process.argv.includes("--bottom");
   const theme = option("theme", "both");
   const width = Number(option("width", "1440"));
   const out = resolve(option("out", join(web, "screenshots")));
   mkdirSync(out, { recursive: true });
 
   const shots: Shot[] = paths.length
-    ? paths.map((path) => ({ name: path.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home", path, width }))
+    ? paths.map((path) => ({
+        name: (path.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home") + (bottom ? "-bottom" : ""),
+        path,
+        width,
+        ...(bottom ? { act: toBottom } : {}),
+      }))
     : STANDARD;
   const themes = (shot: Shot) => shot.themes ?? (theme === "both" ? (["light", "dark"] as const) : [theme as "light" | "dark"]);
 
