@@ -7,6 +7,7 @@ import { useParams } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect, useState } from "react";
 import { z } from "zod";
 import { api, formatTime, formatUsd } from "../lib.ts";
+import { type Item, type Stage, buildTimeline, formatDuration, isOpen, stageDuration, visibleItems } from "../timeline.ts";
 import { Button, Card, ErrorText, StateBadge } from "../ui.tsx";
 
 // The Markdown renderer is large, so it loads only when a plan is shown.
@@ -40,15 +41,8 @@ function EventLine({ event }: { event: RunEventDto }) {
       body = <>Sandbox started for the {event.data.stage} stage at {event.data.baseSha.slice(0, 7)}</>;
       break;
     case "agent.message":
-      body = <span className="whitespace-pre-wrap text-slate-700">{event.data.text}</span>;
-      break;
     case "agent.tool":
-      body = (
-        <span className="font-mono text-xs text-slate-600">
-          {event.data.tool} {event.data.summary}
-        </span>
-      );
-      break;
+      return null; // rendered by AgentMessage and ToolRow
     case "plan.proposed":
       body = <>Plan proposed ({formatUsd(event.data.costUsd)})</>;
       break;
@@ -107,6 +101,87 @@ function EventLine({ event }: { event: RunEventDto }) {
   );
 }
 
+function AgentMessage({ event }: { event: RunEventDto }) {
+  if (event.type !== "agent.message") return null;
+  return (
+    <li className="border-b border-slate-100 py-1.5 text-sm text-slate-700 last:border-0" title={formatTime(event.at)}>
+      <Suspense fallback={<p className="whitespace-pre-wrap">{event.data.text}</p>}>
+        <Markdown>{event.data.text}</Markdown>
+      </Suspense>
+    </li>
+  );
+}
+
+const toolLine = (call: RunEventDto) =>
+  call.type === "agent.tool" ? (
+    <li key={call.seq} className="break-all font-mono text-xs text-slate-500">
+      {call.data.tool} {call.data.summary}
+    </li>
+  ) : null;
+
+function ToolRow({ item, open, onToggle }: { item: Extract<Item, { kind: "tools" }>; open: boolean; onToggle: () => void }) {
+  return (
+    <li className="border-b border-slate-100 py-1.5 text-sm last:border-0">
+      <button type="button" aria-expanded={open} onClick={onToggle} className="text-left text-slate-600 hover:text-slate-900">
+        {open ? "▾" : "▸"} {item.summary}
+      </button>
+      {open ? (
+        <ul className="mt-1 space-y-0.5 pl-4">{item.calls.map(toolLine)}</ul>
+      ) : (
+        item.last && <ul className="mt-1 pl-4">{toolLine(item.last)}</ul>
+      )}
+    </li>
+  );
+}
+
+function StageSection({
+  stage,
+  opened,
+  toggle,
+}: {
+  stage: Stage;
+  opened: ReadonlySet<string>;
+  toggle: (id: string) => void;
+}) {
+  const open = isOpen(stage, opened);
+  const title = `${stage.name} · ${formatDuration(stageDuration(stage))}`;
+  return (
+    <section className="border-b border-slate-100 py-1 last:border-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => toggle(stage.id)}
+        className="flex w-full items-center gap-2 py-1.5 text-left text-sm font-medium text-slate-800"
+      >
+        <span aria-hidden>{open ? "▾" : "▸"}</span>
+        {title}
+        {stage.status === "running" && <span className="text-xs font-normal text-brand">running</span>}
+        {stage.status === "failed" && <span className="text-xs font-normal text-red-700">failed</span>}
+      </button>
+      <ol className="pl-5">
+        {visibleItems(stage, open).map((item) => {
+          switch (item.kind) {
+            case "tools":
+              return <ToolRow key={item.id} item={item} open={opened.has(item.id)} onToggle={() => toggle(item.id)} />;
+            case "refused":
+              return (
+                <li key={item.event.seq} className="border-b border-slate-100 py-1.5 font-mono text-xs text-amber-700 last:border-0">
+                  {item.event.type === "agent.tool" && `${item.event.data.tool} ${item.event.data.summary}`}
+                </li>
+              );
+            case "event":
+              return item.event.type === "agent.message" ? (
+                <AgentMessage key={item.event.seq} event={item.event} />
+              ) : (
+                <EventLine key={item.event.seq} event={item.event} />
+              );
+          }
+        })}
+      </ol>
+    </section>
+  );
+}
+
 export function RunPage() {
   const { runId } = useParams({ from: "/runs/$runId" });
   const queryClient = useQueryClient();
@@ -114,6 +189,13 @@ export function RunPage() {
   const events = useRunEvents(runId, () => void queryClient.invalidateQueries({ queryKey: ["run", runId] }));
   const [feedback, setFeedback] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string) =>
+    setOpened((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   const command = useMutation({
     mutationFn: ({ path, body }: { path: string; body?: unknown }) =>
@@ -129,6 +211,7 @@ export function RunPage() {
   if (!run.data) return <p className="text-sm text-slate-500">Loading…</p>;
   const r = run.data;
   const active = !TERMINAL_STATES.includes(r.state);
+  const timeline = buildTimeline(events, { active });
 
   return (
     <div className="space-y-5">
@@ -222,11 +305,16 @@ export function RunPage() {
         {events.length === 0 ? (
           <p className="text-sm text-slate-500">Waiting for events…</p>
         ) : (
-          <ol>
-            {events.map((event) => (
-              <EventLine key={event.seq} event={event} />
+          <>
+            <ol>
+              {timeline.before.map((event) => (
+                <EventLine key={event.seq} event={event} />
+              ))}
+            </ol>
+            {timeline.stages.map((stage) => (
+              <StageSection key={stage.id} stage={stage} opened={opened} toggle={toggle} />
             ))}
-          </ol>
+          </>
         )}
       </Card>
     </div>
