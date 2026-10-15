@@ -24,10 +24,11 @@ describe("globToRegExp", () => {
 });
 
 describe("matchProtectedPath", () => {
-  it("protects workflows, scripts, agent instructions, code owners and maintainers", () => {
+  it("protects workflows, scripts, git hooks, agent instructions, code owners and maintainers", () => {
     for (const p of [
       ".github/workflows/release.yml",
       ".github/scripts/signoff.sh",
+      ".githooks/pre-push",
       "MAINTAINERS.md",
       "./AGENTS.md",
       "/CLAUDE.md",
@@ -41,7 +42,7 @@ describe("matchProtectedPath", () => {
   });
 
   it("allows ordinary source files", () => {
-    for (const p of ["src/text.ts", "README.md", ".github/ISSUE_TEMPLATE/bug.md"]) {
+    for (const p of ["src/text.ts", "README.md", ".github/ISSUE_TEMPLATE/bug.md", "docs/githooks.md"]) {
       expect(matchProtectedPath(p, DEFAULT_PROTECTED_PATHS), p).toBeUndefined();
     }
   });
