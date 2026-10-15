@@ -22,20 +22,26 @@ export type ChangedFile = {
 
 export type AddedLine = { path: string; text: string };
 
+/** A commit on the agent's branch. The agent can set every field. */
+export type CommitInfo = { sha: string; parents: number; authorEmail: string; committerEmail: string; message: string };
+
 export type ChangeSummary = {
   files: ChangedFile[];
   addedLines: AddedLine[];
   /** False when the branch does not build on the commit the run started from. */
   basedOnBase: boolean;
+  commits: CommitInfo[];
 };
 
 export type CheckLimits = {
   maxFiles: number;
   maxChangedLines: number;
   protectedPaths: readonly string[];
+  /** The only author and committer email an agent's commits may carry. */
+  commitEmail: string;
 };
 
-export const DEFAULT_LIMITS: Omit<CheckLimits, "protectedPaths"> = {
+export const DEFAULT_LIMITS: Omit<CheckLimits, "protectedPaths" | "commitEmail"> = {
   maxFiles: 50,
   maxChangedLines: 2000,
 };
@@ -55,6 +61,15 @@ const SECRET_PATTERNS: Array<[string, RegExp]> = [
  * tag characters, which can smuggle text past a human reviewer.
  */
 const HIDDEN_UNICODE = /[‪-‮⁦-⁩​-‍⁠﻿\u{E0000}-\u{E007F}]/u;
+
+/**
+ * A sign-off certifies the Developer Certificate of Origin, which only a person
+ * can do. An agent that writes one could pass a DCO check without any human
+ * approval (ADR-0006), so its commits may not carry one at all.
+ */
+const SIGN_OFF = /^[ \t]*signed-off-by[ \t]*:/im;
+
+const clip = (text: string) => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
 
 function codePoint(text: string): string {
   const match = text.match(HIDDEN_UNICODE);
@@ -79,6 +94,29 @@ export function checkChange(change: ChangeSummary, limits: CheckLimits): CheckFi
     }
     if (file.mode === "160000") {
       findings.push({ rule: "submodule", path: file.path, message: "adds or changes a git submodule" });
+    }
+  }
+
+  // The agent writes its own commits, so it could claim to be anyone. Only the
+  // factory's own identity may appear, and nobody's sign-off.
+  for (const commit of change.commits) {
+    const short = commit.sha.slice(0, 7);
+    for (const [role, email] of [
+      ["author", commit.authorEmail],
+      ["committer", commit.committerEmail],
+    ] as const) {
+      if (email.toLowerCase() !== limits.commitEmail.toLowerCase()) {
+        findings.push({ rule: "commit", message: `commit ${short} has the ${role} ${clip(email)}; only ${limits.commitEmail} may commit` });
+      }
+    }
+    if (commit.parents > 1) {
+      findings.push({ rule: "history", message: `commit ${short} is a merge; a merge can hide changes that no other commit shows` });
+    }
+    if (SIGN_OFF.test(commit.message)) {
+      findings.push({ rule: "commit", message: `commit ${short} carries a Signed-off-by line; only a person may sign off` });
+    }
+    if (HIDDEN_UNICODE.test(commit.message)) {
+      findings.push({ rule: "hidden_unicode", message: `the message of commit ${short} contains an invisible or bidirectional character (${codePoint(commit.message)})` });
     }
   }
 

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: The Opificia Authors
+# SPDX-License-Identifier: CC0-1.0
+#
+# First half of sign-off by approval (ADR-0006). A review event runs the
+# workflow from the pull request, so this half has no secrets and does no
+# work. When it completes, the Sign-off workflow runs from the default branch
+# and checks the review through the GitHub API.
+name: Sign-off request
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions: read-all
+
+jobs:
+  record:
+    name: Record the review
+    if: github.event.review.state == 'approved' && contains(github.event.review.body, '/signoff')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hand over to the Sign-off workflow
+        env:
+          REVIEW_ID: ${{ github.event.review.id }}
+        run: echo "Review ${REVIEW_ID} asks for a sign-off. The Sign-off workflow checks it and does the work."

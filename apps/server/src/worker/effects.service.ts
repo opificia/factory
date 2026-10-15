@@ -191,7 +191,11 @@ export class EffectsService {
       return;
     }
 
-    const findings = checkChange(summary, { ...DEFAULT_LIMITS, protectedPaths: DEFAULT_PROTECTED_PATHS });
+    const findings = checkChange(summary, {
+      ...DEFAULT_LIMITS,
+      protectedPaths: DEFAULT_PROTECTED_PATHS,
+      commitEmail: this.config.OPIFICIA_GIT_AUTHOR_EMAIL,
+    });
     await this.events.dispatch(run.orgId, run.id, {
       type: "RecordChecks",
       passed: findings.length === 0,

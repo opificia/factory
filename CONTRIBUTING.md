@@ -99,6 +99,24 @@ We copy the hook into `.git/hooks` instead of pointing git at `.githooks`. That 
 
 If an AI agent writes commits for you, it never signs them off (see [AI-assisted contributions](#ai-assisted-contributions)). Review the commits, then run `git signoff` and push.
 
+### Sign off by approval
+
+Maintainers can sign off without a terminal ([ADR-0006](docs/adr/0006-sign-off-by-approval.md)). This is how changes written by the Opificia bot or by an agent get their sign-off:
+
+1. Review the pull request on GitHub.
+2. Approve it, with a line that reads `/signoff` in the review.
+3. The `Sign-off` workflow adds your `Signed-off-by` line to the commits, using the name and email address in [`MAINTAINERS.md`](MAINTAINERS.md), and pushes them. The DCO check runs again.
+
+By writing `/signoff`, you certify the Developer Certificate of Origin for those commits, exactly as with `git commit -s`. The workflow refuses, and changes nothing, when:
+
+- your approval is not on the current head of the branch, because someone pushed after your review;
+- a commit is by someone other than the bot or you, because that person must sign off themselves;
+- the branch contains merge commits;
+- the pull request does not go into the default branch, or branch rules apply to its head branch, because the bot rewrites that branch; or
+- the branch changes `.github/workflows/`, which the bot may not push. Sign off in a terminal instead.
+
+It works only for branches in this repository, not for forks. The workflow needs a GitHub App that is installed only on this repository, with "Contents: read and write" and nothing else. Its ID goes in the repository variable `OPIFICIA_BOT_APP_ID`, and its private key in the secret `OPIFICIA_BOT_PRIVATE_KEY`.
+
 ### How to fix a missing sign-off
 
 For the last commit:
@@ -162,7 +180,7 @@ Opificia builds AI agents, so we expect contributors to use AI tools too. These 
   "Meaningful" means the tool wrote or substantially rewrote part of the change. Autocompletion of a single line does not need a trailer.
 - **No incompatible code.** Do not paste output that reproduces code under a licence incompatible with the folder you change. If a tool produces a large block that looks copied from elsewhere, do not submit it.
 - **Keep confidential material out of AI tools.** Do not paste or send embargoed security reports, secrets and credentials, or anything shared with the project in confidence into third-party AI tools. If in doubt, ask a maintainer first. [How we build Opificia](SOVEREIGNTY.md#how-we-build-opificia) explains why.
-- **Automated agents** may open pull requests only from a clearly labelled bot account (for example, a name ending in `-bot` and a profile that says who runs it). A human maintainer must approve every such pull request before it is merged. A bot account cannot sign off on behalf of a person.
+- **Automated agents** may open pull requests only from a clearly labelled bot account (for example, a name ending in `-bot` and a profile that says who runs it). A human maintainer must approve every such pull request before it is merged. A bot account never signs off by itself. It only records the sign-off a maintainer gives with `/signoff` (see [Sign off by approval](#sign-off-by-approval)).
 
 Pull requests with meaningful AI assistance get the `ai-assisted` label. This is for transparency, not a judgement.
 
