@@ -130,7 +130,7 @@ The proxy:
 - refuses IP addresses, and host names that resolve to private, loopback or link-local addresses, such as the Docker host or a cloud metadata service;
 - refuses a deny list at every level: telemetry and direct model access, paste sites, file drops, request catchers and tunnels;
 - gives each sandbox its own proxy token, apart from the runner token;
-- limits each sandbox to 32 open connections and 4,000 in total, and to 1 MB sent per connection and 32 MB in total. Installing dependencies downloads a lot and sends little; the limits keep an upload small and keep one sandbox from wearing down the server.
+- limits each sandbox to 64 open connections and 4,000 in total, and to 1 MB sent per connection and 32 MB in total. Installing dependencies downloads a lot and sends little; the limits keep an upload small and keep one sandbox from wearing down the server.
 
 The built-in list holds package registries and download-only hosts, such as GitHub's source archives and release assets. It does not hold `github.com`, `gitlab.com` or `codeberg.org`, because they also accept pushes. Add them to `OPIFICIA_EGRESS_ALLOW` if your repositories need them, for example for dependencies fetched with git.
 

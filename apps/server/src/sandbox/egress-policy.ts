@@ -204,8 +204,11 @@ export type EgressLimits = {
 };
 
 export const EGRESS_LIMITS: EgressLimits = {
-  /** Connections open at the same time. */
-  maxOpen: 32,
+  /**
+   * Connections open at the same time. With 32, `pnpm install` in Opificia's
+   * own repository hit the limit hundreds of times and had to retry.
+   */
+  maxOpen: 64,
   /** Connections over the whole session. */
   maxTotal: 4000,
   /** Bytes a sandbox may send on one connection. */
