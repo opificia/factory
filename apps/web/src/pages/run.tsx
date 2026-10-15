@@ -4,13 +4,15 @@
 import { RunDetail, RunEventDto, TERMINAL_STATES } from "@opificia/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { Suspense, lazy, useEffect, useState } from "react";
+import { ArrowDown, Check, ExternalLink, GitPullRequest, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { api, formatTime, formatUsd } from "../lib.ts";
-import { Button, Card, ErrorText, StateBadge } from "../ui.tsx";
-
-// The Markdown renderer is large, so it loads only when a plan is shown.
-const Markdown = lazy(() => import("../markdown.tsx").then((m) => ({ default: m.Markdown })));
+import { usd } from "../format.ts";
+import { api } from "../lib.ts";
+import { Conversation } from "../run/conversation.tsx";
+import { STEPS, type StepStatus, stepStatuses, stoppedAt } from "../status.ts";
+import { buildTimeline } from "../timeline.ts";
+import { Button, ErrorText, Kbd, StatusPill, Textarea } from "../ui.tsx";
 
 /** Follows the run's event stream. The server resumes from Last-Event-ID. */
 function useRunEvents(runId: string, onEvent: () => void): RunEventDto[] {
@@ -29,81 +31,192 @@ function useRunEvents(runId: string, onEvent: () => void): RunEventDto[] {
   return events;
 }
 
-function EventLine({ event }: { event: RunEventDto }) {
-  const time = <span className="w-28 shrink-0 text-xs text-slate-400 tabular-nums">{formatTime(event.at)}</span>;
-  let body: React.ReactNode;
-  switch (event.type) {
-    case "run.queued":
-      body = <>Run queued for {event.data.repo}#{event.data.issue.number}</>;
-      break;
-    case "stage.started":
-      body = <>Sandbox started for the {event.data.stage} stage at {event.data.baseSha.slice(0, 7)}</>;
-      break;
-    case "agent.message":
-      body = <span className="whitespace-pre-wrap text-slate-700">{event.data.text}</span>;
-      break;
-    case "agent.tool":
-      body = (
-        <span className="font-mono text-xs text-slate-600">
-          {event.data.tool} {event.data.summary}
+/**
+ * Keeps the page at the newest event while you are near the bottom, and says
+ * so when you scrolled up and something new arrived.
+ */
+function useFollow(count: number, enabled: boolean) {
+  const [away, setAway] = useState(false);
+  const near = useRef(true);
+  useEffect(() => {
+    const main = document.getElementById("main");
+    if (!main) return;
+    const onScroll = () => {
+      near.current = main.scrollHeight - main.scrollTop - main.clientHeight < 120;
+      if (near.current) setAway(false);
+    };
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => main.removeEventListener("scroll", onScroll);
+  }, []);
+  useLayoutEffect(() => {
+    const main = document.getElementById("main");
+    if (!main || !enabled) return;
+    if (near.current) main.scrollTo({ top: main.scrollHeight });
+    else setAway(true);
+  }, [count, enabled]);
+  const toBottom = () => {
+    const main = document.getElementById("main");
+    main?.scrollTo({ top: main.scrollHeight, behavior: "smooth" });
+    setAway(false);
+  };
+  return { away, toBottom };
+}
+
+const STEP_STYLE: Record<StepStatus, { dot: string; text: string }> = {
+  done: { dot: "bg-ink text-canvas", text: "text-ink-muted" },
+  current: { dot: "bg-run text-white ring-4 ring-run-soft", text: "text-run font-medium" },
+  waiting: { dot: "bg-gold-soft text-gold-ink ring-1 ring-gold", text: "text-gold-ink font-medium" },
+  failed: { dot: "bg-bad text-white", text: "text-bad font-medium" },
+  skipped: { dot: "bg-line-strong text-ink-muted", text: "text-ink-faint" },
+  pending: { dot: "border border-line-strong bg-surface text-ink-faint", text: "text-ink-faint" },
+};
+
+function Steps({ run, events }: { run: RunDetail; events: RunEventDto[] }) {
+  const statuses = stepStatuses(run.state, stoppedAt(events));
+  return (
+    <ol className="flex flex-wrap items-center gap-2 text-xs" aria-label="Progress">
+      {STEPS.map((step, i) => {
+        const status = statuses[step];
+        const style = STEP_STYLE[status];
+        return (
+          <li key={step} className="flex items-center gap-2" aria-current={status === "current" || status === "waiting" ? "step" : undefined}>
+            {i > 0 && <span className={`h-px w-5 ${status === "pending" ? "bg-line" : "bg-line-strong"}`} aria-hidden />}
+            <span className={`grid h-4 w-4 place-items-center rounded-full text-[9px] font-semibold ${style.dot}`} aria-hidden>
+              {status === "done" ? (
+                <Check className="h-2.5 w-2.5" strokeWidth={3} />
+              ) : status === "failed" ? (
+                <X className="h-2.5 w-2.5" strokeWidth={3} />
+              ) : (
+                i + 1
+              )}
+            </span>
+            <span className={style.text}>{step}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Budget({ run }: { run: RunDetail }) {
+  const share = Math.min(1, run.costUsd / run.budgetUsd);
+  return (
+    <div className="hidden w-36 shrink-0 sm:block" title={`${usd(run.costUsd)} of a ${usd(run.budgetUsd)} budget`}>
+      <div className="flex justify-between text-[11px] text-ink-faint tabular-nums">
+        <span>Cost</span>
+        <span>
+          <span className="text-ink-muted">{run.costUsd.toFixed(2)}</span> / {run.budgetUsd.toFixed(0)} USD
         </span>
-      );
-      break;
-    case "plan.proposed":
-      body = <>Plan proposed ({formatUsd(event.data.costUsd)})</>;
-      break;
-    case "plan.approved":
-      body = <>Plan approved by {event.data.by}</>;
-      break;
-    case "plan.changes_requested":
-      body = (
-        <>
-          {event.data.by} asked for changes: <span className="whitespace-pre-wrap italic">{event.data.feedback}</span>
-        </>
-      );
-      break;
-    case "implementation.finished":
-      body = <>Implementation finished at {event.data.headSha.slice(0, 7)} ({formatUsd(event.data.costUsd)})</>;
-      break;
-    case "checks.completed":
-      body = (
-        <div>
-          Checks {event.data.passed ? "passed" : "failed"}: {event.data.files} files, +{event.data.additions} −{event.data.deletions}
-          {event.data.findings.length > 0 && (
-            <ul className="mt-1 list-disc pl-5 text-red-700">
-              {event.data.findings.map((f, i) => (
-                <li key={i}>
-                  {f.path ? <code>{f.path}</code> : null} {f.message}
-                </li>
-              ))}
-            </ul>
+      </div>
+      <div className="mt-1 h-1 overflow-hidden rounded-full bg-sunken">
+        <div className={`h-full rounded-full ${share > 0.8 ? "bg-bad" : "bg-ink-faint"}`} style={{ width: `${Math.max(2, share * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function Header({ run, events, onCancel, cancelling }: { run: RunDetail; events: RunEventDto[]; onCancel: () => void; cancelling: boolean }) {
+  const active = !TERMINAL_STATES.includes(run.state);
+  return (
+    <header className="z-10 border-b border-line bg-canvas/85 backdrop-blur md:sticky md:top-0">
+      <div className="mx-auto max-w-3xl px-6 pt-5 pb-4">
+        <div className="flex items-center gap-2 text-xs text-ink-faint">
+          <a href={`https://github.com/${run.repo}`} target="_blank" rel="noreferrer" className="hover:text-ink">
+            {run.repo}
+          </a>
+          <span aria-hidden>/</span>
+          <a href={run.issueUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-ink">
+            issue #{run.issueNumber}
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+          <span className="ml-auto flex items-center gap-2">
+            {run.prUrl && (
+              <a
+                href={run.prUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 font-medium text-ink hover:bg-sunken"
+              >
+                <GitPullRequest className="h-3.5 w-3.5 text-ok" aria-hidden />
+                Pull request
+              </a>
+            )}
+            {active && (
+              <Button variant="danger" size="sm" disabled={cancelling} onClick={onCancel}>
+                <X className="h-3.5 w-3.5" aria-hidden />
+                Cancel run
+              </Button>
+            )}
+          </span>
+        </div>
+        <div className="mt-2 flex items-start gap-4">
+          <h1 className="min-w-0 flex-1 text-xl leading-snug font-semibold tracking-tight text-balance">{run.issueTitle}</h1>
+          <Budget run={run} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <StatusPill state={run.state} />
+          <Steps run={run} events={events} />
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/** The decision a person makes on a plan, kept at the bottom of the page. */
+function ReviewBar({ busy, onApprove, onRequestChanges }: { busy: boolean; onApprove: () => void; onRequestChanges: (feedback: string) => void }) {
+  const [asking, setAsking] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const send = () => feedback.trim() && onRequestChanges(feedback.trim());
+  return (
+    <div className="sticky bottom-0 z-10 bg-gradient-to-t from-canvas via-canvas to-canvas/0 pt-6 pb-5">
+      <div className="mx-auto max-w-3xl px-6">
+        <div className="relative overflow-hidden rounded-xl border border-line bg-surface shadow-lg shadow-brand/5">
+          <span className="absolute inset-y-0 left-0 w-1 bg-gold" aria-hidden />
+          <div className="flex flex-wrap items-center gap-3 py-3 pr-3 pl-5">
+            <div className="min-w-[14rem] flex-1">
+              <p className="text-sm font-semibold">The plan is ready for your review</p>
+              <p className="text-xs text-ink-muted">Nothing is built until you approve it.</p>
+            </div>
+            {!asking && (
+              <Button variant="secondary" onClick={() => setAsking(true)}>
+                Ask for changes
+              </Button>
+            )}
+            <Button disabled={busy} onClick={onApprove}>
+              <Check className="h-4 w-4" aria-hidden />
+              Approve plan
+            </Button>
+          </div>
+          {asking && (
+            <div className="border-t border-line px-5 py-3">
+              <Textarea
+                autoFocus
+                rows={3}
+                aria-label="What should change in the plan?"
+                placeholder="What should change in the plan?"
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+                  if (e.key === "Escape") setAsking(false);
+                }}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[11px] text-ink-faint">
+                  <Kbd>⌘</Kbd> <Kbd>Enter</Kbd> to send
+                </span>
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setAsking(false)}>
+                  Close
+                </Button>
+                <Button size="sm" disabled={!feedback.trim() || busy} onClick={send}>
+                  Send and plan again
+                </Button>
+              </div>
+            </div>
           )}
         </div>
-      );
-      break;
-    case "pr.opened":
-      body = (
-        <>
-          Pull request{" "}
-          <a className="text-brand underline" href={event.data.url} target="_blank" rel="noreferrer">
-            #{event.data.number}
-          </a>{" "}
-          opened from {event.data.branch}
-        </>
-      );
-      break;
-    case "run.failed":
-      body = <span className="text-red-700">Run failed: {event.data.reason}</span>;
-      break;
-    case "run.cancelled":
-      body = <>Run cancelled by {event.data.by}</>;
-      break;
-  }
-  return (
-    <li className="flex gap-3 border-b border-slate-100 py-1.5 text-sm last:border-0">
-      {time}
-      <div className="min-w-0 flex-1 break-words">{body}</div>
-    </li>
+      </div>
+    </div>
   );
 }
 
@@ -111,124 +224,62 @@ export function RunPage() {
   const { runId } = useParams({ from: "/runs/$runId" });
   const queryClient = useQueryClient();
   const run = useQuery({ queryKey: ["run", runId], queryFn: () => api(`/runs/${runId}`, RunDetail) });
-  const events = useRunEvents(runId, () => void queryClient.invalidateQueries({ queryKey: ["run", runId] }));
-  const [feedback, setFeedback] = useState("");
-  const [showFeedback, setShowFeedback] = useState(false);
+  const events = useRunEvents(runId, () => {
+    void queryClient.invalidateQueries({ queryKey: ["run", runId] });
+    void queryClient.invalidateQueries({ queryKey: ["runs"] });
+  });
 
   const command = useMutation({
     mutationFn: ({ path, body }: { path: string; body?: unknown }) =>
       api(`/runs/${runId}/${path}`, z.undefined(), { method: "POST", body: body ? JSON.stringify(body) : undefined }),
     onSuccess: () => {
-      setFeedback("");
-      setShowFeedback(false);
       void queryClient.invalidateQueries({ queryKey: ["run", runId] });
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
   });
 
-  if (run.error) return <ErrorText error={run.error} />;
-  if (!run.data) return <p className="text-sm text-slate-500">Loading…</p>;
+  const active = run.data ? !TERMINAL_STATES.includes(run.data.state) : false;
+  const follow = useFollow(events.length, active);
+
+  if (run.error) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-10">
+        <ErrorText error={run.error} />
+      </div>
+    );
+  }
+  if (!run.data) return <div className="mx-auto max-w-3xl px-6 py-10 text-sm text-ink-faint">Loading…</div>;
   const r = run.data;
-  const active = !TERMINAL_STATES.includes(r.state);
+  const { stages } = buildTimeline(events, { active });
 
   return (
-    <div className="space-y-5">
-      <Card
-        title={r.issueTitle}
-        actions={
-          active ? (
-            <Button variant="danger" disabled={command.isPending} onClick={() => command.mutate({ path: "cancel" })}>
-              Cancel run
-            </Button>
-          ) : undefined
-        }
-      >
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-slate-500">State</dt>
-            <dd>
-              <StateBadge state={r.state} />
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Issue</dt>
-            <dd>
-              <a className="text-brand underline" href={r.issueUrl} target="_blank" rel="noreferrer">
-                {r.repo}#{r.issueNumber}
-              </a>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Cost</dt>
-            <dd className="tabular-nums">
-              {formatUsd(r.costUsd)} of {formatUsd(r.budgetUsd)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Pull request</dt>
-            <dd>
-              {r.prUrl ? (
-                <a className="text-brand underline" href={r.prUrl} target="_blank" rel="noreferrer">
-                  Open on GitHub
-                </a>
-              ) : (
-                <span className="text-slate-400">Not yet</span>
-              )}
-            </dd>
-          </div>
-        </dl>
+    <div className="flex min-h-full flex-col">
+      <Header run={r} events={events} onCancel={() => command.mutate({ path: "cancel" })} cancelling={command.isPending} />
+      <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-6">
         <ErrorText error={command.error} />
-      </Card>
-
-      {r.plan && (
-        <Card title="Plan">
-          <div className="max-h-[32rem] overflow-auto rounded-md bg-slate-50 p-4">
-            <Suspense fallback={<p className="whitespace-pre-wrap text-sm leading-relaxed">{r.plan}</p>}>
-              <Markdown>{r.plan}</Markdown>
-            </Suspense>
-          </div>
-          {r.state === "awaiting_approval" && (
-            <div className="mt-4 space-y-3">
-              <p className="text-sm text-slate-600">Nothing is implemented until you approve the plan.</p>
-              <div className="flex gap-2">
-                <Button disabled={command.isPending} onClick={() => command.mutate({ path: "approve" })}>
-                  Approve plan
-                </Button>
-                <Button variant="secondary" onClick={() => setShowFeedback(!showFeedback)}>
-                  Ask for changes
-                </Button>
-              </div>
-              {showFeedback && (
-                <div className="space-y-2">
-                  <textarea
-                    className="h-28 w-full rounded-md border border-slate-300 p-3 text-sm focus:border-brand focus:outline-none"
-                    placeholder="What should change in the plan?"
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
-                  />
-                  <Button
-                    disabled={!feedback.trim() || command.isPending}
-                    onClick={() => command.mutate({ path: "request-changes", body: { feedback } })}
-                  >
-                    Send feedback and plan again
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
+        <Conversation run={r} events={events} stages={stages} />
+      </div>
+      {follow.away && (
+        <div className="pointer-events-none sticky bottom-24 z-10 flex justify-center">
+          <button
+            type="button"
+            onClick={follow.toBottom}
+            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted shadow-md hover:text-ink"
+          >
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+            New activity
+          </button>
+        </div>
       )}
-
-      <Card title="Timeline">
-        {events.length === 0 ? (
-          <p className="text-sm text-slate-500">Waiting for events…</p>
-        ) : (
-          <ol>
-            {events.map((event) => (
-              <EventLine key={event.seq} event={event} />
-            ))}
-          </ol>
-        )}
-      </Card>
+      {r.state === "awaiting_approval" ? (
+        <ReviewBar
+          busy={command.isPending}
+          onApprove={() => command.mutate({ path: "approve" })}
+          onRequestChanges={(feedback) => command.mutate({ path: "request-changes", body: { feedback } })}
+        />
+      ) : (
+        <div className="h-10" aria-hidden />
+      )}
     </div>
   );
 }

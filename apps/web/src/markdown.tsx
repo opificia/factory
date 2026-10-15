@@ -21,7 +21,7 @@ const rehypePlugins: PluggableList = [
 
 export function Markdown({ children }: { children: string }) {
   return (
-    <Streamdown mode="static" skipHtml rehypePlugins={rehypePlugins} controls={false} className="space-y-3 text-sm leading-relaxed">
+    <Streamdown mode="static" skipHtml rehypePlugins={rehypePlugins} controls={false} lineNumbers={false} className="space-y-3 text-sm leading-relaxed">
       {children}
     </Streamdown>
   );

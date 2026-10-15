@@ -6,16 +6,229 @@
 /* Streamdown's components use these classes (ADR-0008). */
 @source "../node_modules/streamdown/dist/*.js";
 
-@theme {
-  --color-brand: #1f3a5f;
+/* The website's fonts, used in place (website/fonts, SIL OFL 1.1). */
+@font-face {
+  font-family: "Archivo";
+  src: url("../../../website/fonts/archivo-latin-wdth-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-style: normal;
+  font-display: swap;
+}
 
-  /* Tokens that Streamdown's components expect, mapped to our palette. */
-  --color-background: var(--color-white);
-  --color-foreground: var(--color-slate-900);
-  --color-muted: var(--color-slate-100);
-  --color-muted-foreground: var(--color-slate-500);
-  --color-border: var(--color-slate-200);
-  --color-primary: var(--color-brand);
-  --color-primary-foreground: var(--color-white);
-  --color-sidebar: var(--color-slate-50);
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("../../../website/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("../../../website/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Colours follow the brand book: navy is the brand, gold is the one signal per
+ * view and never text on a light ground, mist is the quiet surface. Status
+ * colours are kept for what needs a person (gold), what is moving (blue) and
+ * what broke (red).
+ */
+:root {
+  --canvas: #f6f7fb;
+  --surface: #ffffff;
+  --sunken: #eef1f7;
+  --line: #e2e6f0;
+  --line-strong: #cfd5e4;
+  --ink: #10194a;
+  --ink-muted: #4a5275;
+  --ink-faint: #7a819e;
+  --primary: #10194a;
+  --primary-ink: #ffffff;
+  --gold: #f2b705;
+  --gold-soft: #fdf5d6;
+  --gold-ink: #6b4f00;
+  --run: #2f5bd3;
+  --run-soft: #eaf0fd;
+  --ok: #17784b;
+  --ok-soft: #e7f5ee;
+  --bad: #c2360f;
+  --bad-soft: #fdece7;
+  --focus: #10194a;
+  color-scheme: light;
+}
+
+/*
+ * Dark: neutral charcoal with a slight cool tint, so long pages are not a wall
+ * of navy. index.html sets data-theme before the first paint, from the choice
+ * stored in the browser or, by default, from the system.
+ */
+:root[data-theme="dark"] {
+  --canvas: #0f1014;
+  --surface: #16181d;
+  --sunken: #1d2027;
+  --line: #262a33;
+  --line-strong: #353a46;
+  --ink: #eef0f5;
+  --ink-muted: #aab0bf;
+  --ink-faint: #777e90;
+  --primary: #eef0f5;
+  --primary-ink: #10194a;
+  --gold-soft: rgb(242 183 5 / 0.13);
+  --gold-ink: #f3c943;
+  --run: #93a8f5;
+  --run-soft: rgb(147 168 245 / 0.13);
+  --ok: #62cf9b;
+  --ok-soft: rgb(98 207 155 / 0.12);
+  --bad: #ff8f73;
+  --bad-soft: rgb(255 143 115 / 0.12);
+  --focus: #f2b705;
+  color-scheme: dark;
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-gold-ink: var(--gold-ink);
+  --color-run: var(--run);
+  --color-run-soft: var(--run-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-brand: #10194a;
+
+  /* Tokens that Streamdown's components expect, mapped to ours. */
+  --color-background: var(--surface);
+  --color-foreground: var(--ink);
+  --color-muted: var(--sunken);
+  --color-muted-foreground: var(--ink-muted);
+  --color-border: var(--line);
+  --color-primary-foreground: var(--primary-ink);
+  --color-sidebar: var(--sunken);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--ink);
+    font-feature-settings: "ss01", "tnum" 0;
+  }
+
+  ::selection {
+    background: var(--gold-soft);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+}
+
+/* A soft sweep over text that is in progress, such as the current tool call. */
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@utility shimmer {
+  background: linear-gradient(90deg, var(--ink-faint) 30%, var(--ink) 50%, var(--ink-faint) 70%);
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    color: var(--ink-muted);
+    background: none;
+  }
+}
+
+/*
+ * Plans and messages: Markdown in the conversation. The selectors are more
+ * specific than Streamdown's own classes, which suit chat, not documents.
+ */
+@utility prose-run {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--ink);
+
+  & h1,
+  & h2 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 1.1em 0 0.35em;
+  }
+
+  & h3,
+  & h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin: 0.9em 0 0.25em;
+  }
+
+  & > div > :first-child,
+  & h1:first-child,
+  & h2:first-child {
+    margin-top: 0;
+  }
+
+  & p {
+    margin: 0.45em 0;
+  }
+
+  & ul,
+  & ol {
+    margin: 0.35em 0;
+    padding-left: 1.15rem;
+  }
+
+  & li {
+    margin: 0.1em 0;
+    padding: 0;
+  }
+
+  & li > ul,
+  & li > ol {
+    margin: 0.1em 0;
+  }
+
+  & code:not(pre code) {
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    background: var(--sunken);
+    border-radius: 4px;
+    padding: 0.1em 0.3em;
+  }
+
+  & pre {
+    font-size: 0.75rem;
+  }
 }

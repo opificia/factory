@@ -5,7 +5,7 @@ import { InstallationDto, RepoDto } from "@opificia/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../lib.ts";
-import { Button, Card, ErrorText } from "../ui.tsx";
+import { Button, Card, ErrorText, ThemeSwitch } from "../ui.tsx";
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -21,21 +21,25 @@ export function SettingsPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-3xl space-y-5 px-6 py-10">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="mt-1 text-sm text-ink-muted">Where Opificia may work, and how this app looks.</p>
+      </div>
       <Card title="GitHub installations">
-        <p className="mb-3 text-sm text-slate-600">
+        <p className="mb-3 text-sm text-ink-muted">
           Install your GitHub App on the repositories Opificia may work on, then link the installation to this organisation.
         </p>
         <ErrorText error={installations.error ?? link.error} />
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {installations.data?.map((i) => (
             <li key={i.installationId} className="flex items-center justify-between py-2 text-sm">
               <span>
                 <span className="font-medium">{i.accountLogin}</span>{" "}
-                <span className="text-slate-500">installation {i.installationId}</span>
+                <span className="text-ink-faint">installation {i.installationId}</span>
               </span>
               {i.linked ? (
-                <span className="text-green-700">Linked</span>
+                <span className="text-ok">Linked</span>
               ) : (
                 <Button disabled={link.isPending} onClick={() => link.mutate(i.installationId)}>
                   Link
@@ -44,28 +48,31 @@ export function SettingsPage() {
             </li>
           ))}
           {installations.data?.length === 0 && (
-            <li className="py-2 text-sm text-slate-500">
+            <li className="py-2 text-sm text-ink-faint">
               No installations to show. The GitHub App may not be installed yet, or only the operator can link it.
             </li>
           )}
         </ul>
       </Card>
       <Card title="Repositories">
-        <p className="mb-3 text-sm text-slate-600">
-          Opificia picks up open issues labelled <code className="rounded bg-slate-100 px-1">opificia</code> in these repositories.
+        <p className="mb-3 text-sm text-ink-muted">
+          Opificia picks up open issues labelled <code className="rounded bg-sunken px-1">opificia</code> in these repositories.
         </p>
         <ErrorText error={repos.error} />
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {repos.data?.map((r) => (
             <li key={r.fullName} className="py-2 text-sm">
               <span className="font-medium">{r.fullName}</span>{" "}
-              <span className="text-slate-500">
+              <span className="text-ink-faint">
                 {r.private ? "private" : "public"}, default branch {r.defaultBranch}
               </span>
             </li>
           ))}
-          {repos.data?.length === 0 && <li className="py-2 text-sm text-slate-500">No linked repositories yet.</li>}
+          {repos.data?.length === 0 && <li className="py-2 text-sm text-ink-faint">No linked repositories yet.</li>}
         </ul>
+      </Card>
+      <Card title="Appearance" description="Stored in this browser.">
+        <ThemeSwitch labels />
       </Card>
     </div>
   );
