@@ -3,10 +3,12 @@
 # SPDX-License-Identifier: CC0-1.0
 #
 # The DCO check of a pull request. Every commit needs a Signed-off-by line
-# that matches its author. A commit by a GitHub App bot may carry a
-# maintainer's sign-off instead (ADR-0006), but only if that maintainer
-# approved the pull request with "/signoff" on a commit with the same tree.
-# Anyone can type a Signed-off-by line, so the line alone proves nothing.
+# that matches its author. When a GitHub App bot opened the pull request, a
+# commit by that bot may carry a maintainer's sign-off instead (ADR-0006), but
+# only if that maintainer approved the pull request with "/signoff" on a
+# commit with the same tree. Anyone can type a Signed-off-by line or an author
+# email, so neither proves anything alone: the bot is the one GitHub names as
+# the author of the pull request.
 #
 # Needs BASE_SHA, HEAD_SHA, PR_NUMBER, GITHUB_REPOSITORY and GH_TOKEN, and a
 # clone with both commits. The maintainers come from the base branch, and the
@@ -16,11 +18,15 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-bot='^[0-9]+\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$'
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 git show "${BASE_SHA}:MAINTAINERS.md" | "$here/maintainers.sh" > "$work/maintainers"
+
+# The noreply email of the bot that opened the pull request, or nothing when
+# a person opened it.
+bot_email="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq \
+  'select(.user.type == "Bot") | "\(.user.id)+\(.user.login)@users.noreply.github.com" | ascii_downcase')"
 
 # Emails of maintainers who approved with /signoff on a commit whose tree is
 # the tree of the head. Computed only when a bot commit needs it.
@@ -55,13 +61,13 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
     echo "ok      $summary"
     continue
   fi
-  if grep -qE "$bot" <<< "$author_email"; then
+  if [ -n "$bot_email" ] && [ "$(tr '[:upper:]' '[:lower:]' <<< "$author_email")" = "$bot_email" ]; then
     if [ "$signers_loaded" -eq 0 ]; then
       approved_signers > "$work/signers"
       signers_loaded=1
     fi
     if [ -s "$work/signers" ] && grep -qiFf "$work/signers" <<< "$signoffs"; then
-      echo "ok      $summary (bot, signed off by a maintainer who approved with /signoff)"
+      echo "ok      $summary (by the bot that opened the pull request, signed off by a maintainer who approved with /signoff)"
       continue
     fi
   fi
