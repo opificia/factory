@@ -22,7 +22,9 @@ The commitments below make sure that you, the operator, decide the answers.
 
 Opificia is fully self-hostable, including in air-gapped environments (networks with no connection to the internet). No feature may require a service hosted by the project, the steward or any other vendor.
 
-How we test it: the full feature set works in an installation with no outbound internet access, given local models and local repositories.
+An optional plugin may connect to a vendor's service when the operator chooses it, for example a harness for a hosted model. Such a plugin never becomes a requirement: for everything it does, a supported alternative works without any vendor. See [ADR-0004](docs/adr/0004-target-architecture.md).
+
+How we test it: the full feature set works in an installation with no outbound internet access, given local models and local repositories, using only plugins that need no vendor.
 
 ### 2. No phone-home
 
@@ -37,6 +39,8 @@ How we test it: a default installation makes no network connections other than t
 *Status: proposed until ADR accepted.*
 
 Opificia talks to models through an open, documented interface. Any model that implements it can be used. Open-weight models are first-class: they are tested, documented and supported to the same level as hosted models. There is no hard dependency on a single model provider.
+
+A harness that works with one provider's models only, such as Claude Code, may exist as a plugin, never as the only option. A release is blocked until an open harness with an open-weight model passes the reference test suite ([ADR-0004](docs/adr/0004-target-architecture.md)).
 
 How we test it: the reference test suite passes with at least one open-weight model running locally.
 
@@ -98,6 +102,8 @@ Our commitments apply to the software you run, not to the tools we use to write 
 - **No tool is required.** No part of Opificia may require a specific AI tool or provider to build, run or operate it.
 - **AI help is recorded.** Every commit with meaningful AI help names the tool in an `Assisted-by` trailer, so the record is public in the git history. See [`CONTRIBUTING.md`](CONTRIBUTING.md#ai-assisted-contributions).
 - **Confidential material stays out.** We do not send embargoed vulnerability reports, secrets and credentials, or anything people share with the project in confidence to third-party AI services.
+
+Claude Code is also the first harness in Opificia itself ([ADR-0004](docs/adr/0004-target-architecture.md)). It is an optional plugin, outside the core. You use it only if you choose it, with your own Anthropic API key or your own account with a cloud provider that offers Claude. Your code and prompts then go to that provider. Opificia never pays for, resells or meters Claude usage. An open harness with open-weight models is the supported alternative, and the first release waits for it.
 
 We intend to move our own work onto Opificia as it matures. See [`ROADMAP.md`](ROADMAP.md#phase-2-hardening).
 
