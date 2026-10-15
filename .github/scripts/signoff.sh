@@ -114,14 +114,18 @@ apply() {
   # maintainer may receive this maintainer's sign-off. Anyone else certifies
   # their own commits. An author email alone proves nothing, so a bot email
   # counts only when that bot is the author of the pull request.
-  local sha author signoffs pending=0 lower
+  local sha author signoffs pending=0 lower bot_id=""
+  # Only the bot's user ID counts, because the login in its noreply address
+  # changes when someone renames the App.
+  [[ "${BOT_EMAIL:-}" =~ ^([0-9]+)\+ ]] && bot_id="${BASH_REMATCH[1]}"
   for sha in $(git rev-list "$base_sha..HEAD"); do
     author="$(git show -s --format='%ae' "$sha")"
     signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
     grep -qiF "<$author>" <<< "$signoffs" && continue
     grep -qiF "<$email>" <<< "$signoffs" && continue
     lower="$(tr '[:upper:]' '[:lower:]' <<< "$author")"
-    if { [ -n "${BOT_EMAIL:-}" ] && [ "$lower" = "$BOT_EMAIL" ]; } || [ "$lower" = "$(tr '[:upper:]' '[:lower:]' <<< "$email")" ]; then
+    if { [ -n "$bot_id" ] && grep -qE "^${bot_id}\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$" <<< "$lower"; } ||
+      [ "$lower" = "$(tr '[:upper:]' '[:lower:]' <<< "$email")" ]; then
       pending=1
     else
       die "Commit $(git show -s --format='%h' "$sha") is by $author, who must sign it off themselves."

@@ -23,10 +23,14 @@ trap 'rm -rf "$work"' EXIT
 
 git show "${BASE_SHA}:MAINTAINERS.md" | "$here/maintainers.sh" > "$work/maintainers"
 
-# The noreply email of the bot that opened the pull request, or nothing when
-# a person opened it.
-bot_email="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq \
-  'select(.user.type == "Bot") | "\(.user.id)+\(.user.login)@users.noreply.github.com" | ascii_downcase')"
+# The user ID of the bot that opened the pull request, or nothing when a
+# person opened it. Its commits carry the noreply address "<id>+<login>@...".
+# Only the ID counts, because the login changes when someone renames the App.
+bot_id="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'select(.user.type == "Bot") | .user.id')"
+[[ "$bot_id" =~ ^[0-9]*$ ]] || bot_id=""
+is_bot_commit() {
+  [ -n "$bot_id" ] && tr '[:upper:]' '[:lower:]' <<< "$1" | grep -qE "^${bot_id}\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$"
+}
 
 # Emails of maintainers who approved with /signoff on a commit whose tree is
 # the tree of the head. Computed only when a bot commit needs it.
@@ -61,7 +65,7 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
     echo "ok      $summary"
     continue
   fi
-  if [ -n "$bot_email" ] && [ "$(tr '[:upper:]' '[:lower:]' <<< "$author_email")" = "$bot_email" ]; then
+  if is_bot_commit "$author_email"; then
     if [ "$signers_loaded" -eq 0 ]; then
       approved_signers > "$work/signers"
       signers_loaded=1
