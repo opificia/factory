@@ -19,6 +19,14 @@ export type RunState = z.infer<typeof RunState>;
 
 export const TERMINAL_STATES: readonly RunState[] = ["pr_opened", "failed", "cancelled"];
 
+/**
+ * What happened to a run's pull request after Opificia opened it. The run stays
+ * `pr_opened`; this says whether a person merged it, closed it or has not
+ * decided yet.
+ */
+export const PrState = z.enum(["open", "merged", "closed"]);
+export type PrState = z.infer<typeof PrState>;
+
 export const Stage = z.enum(["plan", "implement"]);
 export type Stage = z.infer<typeof Stage>;
 
@@ -92,6 +100,18 @@ export const RunEventBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("pr.opened"),
     data: z.object({ url: z.url(), number: z.number().int(), branch: z.string() }),
+  }),
+  z.object({
+    type: z.literal("pr.merged"),
+    data: z.object({ by: z.string().nullable() }),
+  }),
+  z.object({
+    type: z.literal("pr.closed"),
+    data: z.object({}),
+  }),
+  z.object({
+    type: z.literal("pr.reopened"),
+    data: z.object({}),
   }),
   z.object({
     type: z.literal("run.failed"),

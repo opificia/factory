@@ -16,7 +16,7 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
-import { RequestChangesInput, type RunDetail, type RunEventDto, type RunState, type RunSummary } from "@opificia/contracts";
+import { RequestChangesInput, type PrState, type RunDetail, type RunEventDto, type RunState, type RunSummary } from "@opificia/contracts";
 import type { Request, Response } from "express";
 import { CurrentActor, SessionGuard, type Actor } from "../auth/session.guard.js";
 import { ZodPipe } from "../common/http.js";
@@ -39,6 +39,7 @@ function toSummary(run: Run): RunSummary {
     state: run.state as RunState,
     costUsd: run.costUsd,
     prUrl: run.prUrl,
+    prState: run.prState as PrState | null,
     createdAt: run.createdAt.toISOString(),
     updatedAt: run.updatedAt.toISOString(),
   };

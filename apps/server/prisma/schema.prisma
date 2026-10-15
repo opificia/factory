@@ -167,6 +167,8 @@ model Run {
   headSha        String?      @map("head_sha")
   prUrl          String?      @map("pr_url")
   prNumber       Int?         @map("pr_number")
+  /// open, merged or closed: what a person did with the pull request.
+  prState        String?      @map("pr_state")
   costUsd        Float        @default(0) @map("cost_usd")
   budgetUsd      Float        @map("budget_usd")
   deadlineAt     DateTime     @map("deadline_at")

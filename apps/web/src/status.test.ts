@@ -3,7 +3,7 @@
 
 import type { RunEventDto } from "@opificia/contracts";
 import { describe, expect, it } from "vitest";
-import { stepStatuses, stoppedAt } from "./status.ts";
+import { runMeta, stepStatuses, stoppedAt } from "./status.ts";
 
 describe("stepStatuses", () => {
   it("marks earlier steps done and the current one by state", () => {
@@ -33,5 +33,15 @@ describe("stoppedAt", () => {
 
   it("stops at the checks when they failed", () => {
     expect(stoppedAt([ev("implementation.finished"), checks(false)])).toBe("Checks");
+  });
+});
+
+describe("runMeta", () => {
+  it("speaks about an opened pull request by what happened to it", () => {
+    expect(runMeta("pr_opened", "open")).toMatchObject({ short: "Review PR", tone: "attention" });
+    expect(runMeta("pr_opened", "merged")).toMatchObject({ short: "Merged", tone: "done" });
+    expect(runMeta("pr_opened", "closed")).toMatchObject({ short: "Closed", tone: "quiet" });
+    expect(runMeta("pr_opened", null)).toMatchObject({ short: "PR opened" });
+    expect(runMeta("failed", "merged")).toMatchObject({ short: "Failed" });
   });
 });

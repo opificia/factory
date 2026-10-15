@@ -17,6 +17,7 @@ function run(id: string, state: RunState, updatedAt: string, extra: Partial<RunS
     state,
     costUsd: 0,
     prUrl: null,
+    prState: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt,
     ...extra,
@@ -37,6 +38,21 @@ describe("groupRuns", () => {
     expect(ids(groups.needsYou)).toEqual(["awaiting_approval"]);
     expect(ids(groups.working).sort()).toEqual(["checking", "implementing", "planning", "publishing", "queued"]);
     expect(ids(groups.done).sort()).toEqual(["cancelled", "failed", "pr_opened"]);
+  });
+
+  it("puts open pull requests under needs you, and merged or closed ones under done", () => {
+    const at = "2026-01-02T00:00:00.000Z";
+    const groups = groupRuns(
+      [
+        run("open", "pr_opened", at, { prState: "open" }),
+        run("merged", "pr_opened", at, { prState: "merged" }),
+        run("closed", "pr_opened", at, { prState: "closed" }),
+        run("review", "awaiting_approval", "2026-01-01T00:00:00.000Z"),
+      ],
+      null,
+    );
+    expect(ids(groups.needsYou)).toEqual(["review", "open"]);
+    expect(ids(groups.done).sort()).toEqual(["closed", "merged"]);
   });
 
   it("orders needs-you runs by longest waiting first", () => {

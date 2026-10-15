@@ -69,7 +69,7 @@ Open <http://localhost:5173>.
 5. Claude Code reads the repository in a sandbox and proposes a plan. The plan also appears as a comment on the issue.
 6. Approve the plan, or ask for changes. If you ask for changes, Opificia plans again with your feedback.
 7. Claude Code implements the plan, runs the tests and reviews its own diff.
-8. Opificia checks the result and opens a pull request that closes the issue. Review it and merge it yourself.
+8. Opificia checks the result and opens a pull request that closes the issue. Review it and merge it yourself. Until you merge or close it, the run is listed under **Needs you**; Opificia checks the pull request every 30 seconds and records when it is merged or closed.
 
 Each run has a budget of 15 USD and 60 minutes of agent time; the time spent waiting for your approval does not count. You can change both in `.env`. You can cancel a run at any time.
 

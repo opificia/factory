@@ -32,12 +32,15 @@ function byUpdated(direction: 1 | -1) {
     direction * a.id.localeCompare(b.id);
 }
 
+/** A pull request that is still open waits for a person to review and merge it. */
+const prWaits = (run: RunSummary) => run.state === "pr_opened" && run.prState === "open";
+
 /** Sorts runs into the sidebar sections, optionally for one repository only. */
 export function groupRuns(runs: readonly RunSummary[], repo: string | null): RunGroups {
   const shown = repo === null ? runs : runs.filter((run) => run.repo === repo);
-  const inSection = (states: readonly RunState[]) => shown.filter((run) => states.includes(run.state));
+  const inSection = (states: readonly RunState[]) => shown.filter((run) => states.includes(run.state) && !prWaits(run));
   return {
-    needsYou: inSection(SECTIONS.needs_you).sort(byUpdated(1)),
+    needsYou: [...inSection(SECTIONS.needs_you), ...shown.filter(prWaits)].sort(byUpdated(1)),
     working: inSection(SECTIONS.working).sort(byUpdated(-1)),
     done: inSection(SECTIONS.done).sort(byUpdated(-1)),
   };

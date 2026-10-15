@@ -37,6 +37,9 @@ const PINNED = new Set<RunEventDto["type"]>([
   "plan.changes_requested",
   "checks.completed",
   "pr.opened",
+  "pr.merged",
+  "pr.closed",
+  "pr.reopened",
   "run.failed",
   "run.cancelled",
 ]);

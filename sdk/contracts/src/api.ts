@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { z } from "zod";
-import { RunEventBody, RunState } from "./run.js";
+import { PrState, RunEventBody, RunState } from "./run.js";
 
 /** A run as the list view shows it. */
 export const RunSummary = z.object({
@@ -14,6 +14,8 @@ export const RunSummary = z.object({
   state: RunState,
   costUsd: z.number(),
   prUrl: z.url().nullable(),
+  /** Null until a pull request is opened. */
+  prState: PrState.nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

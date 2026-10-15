@@ -3,12 +3,12 @@
 
 import type { RunSummary } from "@opificia/contracts";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, GitPullRequest, Tag } from "lucide-react";
+import { ArrowRight, GitMerge, GitPullRequest, Tag } from "lucide-react";
 import { usd } from "../format.ts";
 import { useNow } from "../hooks.ts";
 import { groupRuns, shortAge } from "../run-list.ts";
 import { useRuns } from "../sidebar.tsx";
-import { STATE_META, TONE_CLASSES } from "../status.ts";
+import { TONE_CLASSES, runMeta } from "../status.ts";
 import { ErrorText, Mark, StatusDot } from "../ui.tsx";
 
 const WEEK = 7 * 86_400_000;
@@ -24,21 +24,25 @@ function Stat({ label, value, hint }: { label: string; value: string | number; h
 }
 
 function RunCard({ run, now }: { run: RunSummary; now: number }) {
-  const meta = STATE_META[run.state];
+  const meta = runMeta(run.state, run.prState);
   return (
     <Link
       to="/runs/$runId"
       params={{ runId: run.id }}
       className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 hover:border-line-strong"
     >
-      <StatusDot state={run.state} />
+      <StatusDot state={run.state} prState={run.prState} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{run.issueTitle}</span>
         <span className="block truncate text-xs text-ink-faint">
           {run.repo}#{run.issueNumber} · <span className={TONE_CLASSES[meta.tone].text}>{meta.label}</span> · {shortAge(run.updatedAt, now)} ago
         </span>
       </span>
-      {run.prUrl && <GitPullRequest className="h-4 w-4 shrink-0 text-ok" aria-label="Pull request opened" />}
+      {run.prState === "merged" ? (
+        <GitMerge className="h-4 w-4 shrink-0 text-ok" aria-label="Merged" />
+      ) : (
+        run.prUrl && <GitPullRequest className={`h-4 w-4 shrink-0 ${run.prState === "closed" ? "text-ink-faint" : "text-ok"}`} aria-label="Pull request" />
+      )}
       <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5" aria-hidden />
     </Link>
   );
@@ -69,7 +73,7 @@ export function HomePage() {
   const all = runs.data ?? [];
   const groups = groupRuns(all, null);
   const thisWeek = all.filter((r) => now - Date.parse(r.createdAt) < WEEK);
-  const opened = thisWeek.filter((r) => r.state === "pr_opened").length;
+  const merged = thisWeek.filter((r) => r.prState === "merged").length;
   const spend = thisWeek.reduce((sum, r) => sum + r.costUsd, 0);
 
   return (
@@ -94,9 +98,9 @@ export function HomePage() {
       {all.length > 0 && (
         <>
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Needs you" value={groups.needsYou.length} hint={groups.needsYou.length ? "plans to review" : "nothing waiting"} />
+            <Stat label="Needs you" value={groups.needsYou.length} hint={groups.needsYou.length ? "plans and pull requests" : "nothing waiting"} />
             <Stat label="Working" value={groups.working.length} />
-            <Stat label="Pull requests" value={opened} hint="this week" />
+            <Stat label="Merged" value={merged} hint="this week" />
             <Stat label="Spend" value={spend.toFixed(2)} hint={`USD this week`} />
           </div>
 

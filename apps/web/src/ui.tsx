@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { RunState } from "@opificia/contracts";
+import type { PrState, RunState } from "@opificia/contracts";
 import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import mark from "../../../brand/opificia-mark.svg";
 import markReverse from "../../../brand/opificia-mark-reverse.svg";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { STATE_META, TONE_CLASSES } from "./status.ts";
+import { TONE_CLASSES, runMeta } from "./status.ts";
 import { useTheme } from "./theme.ts";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -83,8 +83,8 @@ export function ErrorText({ error }: { error: unknown }) {
 }
 
 /** A small dot in the colour of a state's tone. Moving runs pulse. */
-export function StatusDot({ state, className = "" }: { state: RunState; className?: string }) {
-  const { tone } = STATE_META[state];
+export function StatusDot({ state, prState, className = "" }: { state: RunState; prState?: PrState | null; className?: string }) {
+  const { tone } = runMeta(state, prState);
   return (
     <span className={`relative inline-flex h-2 w-2 shrink-0 ${className}`} aria-hidden>
       {tone === "moving" && <span className={`absolute inset-0 animate-ping rounded-full opacity-60 motion-reduce:hidden ${TONE_CLASSES[tone].dot}`} />}
@@ -93,11 +93,11 @@ export function StatusDot({ state, className = "" }: { state: RunState; classNam
   );
 }
 
-export function StatusPill({ state }: { state: RunState }) {
-  const meta = STATE_META[state];
+export function StatusPill({ state, prState }: { state: RunState; prState?: PrState | null }) {
+  const meta = runMeta(state, prState);
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${TONE_CLASSES[meta.tone].soft}`}>
-      <StatusDot state={state} />
+      <StatusDot state={state} prState={prState} />
       {meta.label}
     </span>
   );

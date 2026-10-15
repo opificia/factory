@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { RunDetail, RunEventDto } from "@opificia/contracts";
+import type { PrState, RunDetail, RunEventDto } from "@opificia/contracts";
 import {
   Ban,
   Check,
@@ -9,7 +9,9 @@ import {
   CircleAlert,
   FilePen,
   FileSearch,
+  GitMerge,
   GitPullRequest,
+  GitPullRequestClosed,
   Globe,
   MessageSquareText,
   ShieldAlert,
@@ -242,8 +244,11 @@ function ChecksCard({ event }: { event: RunEventDto }) {
   );
 }
 
-function PullRequestCard({ event }: { event: RunEventDto }) {
+function PullRequestCard({ event, prState }: { event: RunEventDto; prState: PrState | null }) {
   if (event.type !== "pr.opened") return null;
+  const merged = prState === "merged";
+  const closed = prState === "closed";
+  const Icon = merged ? GitMerge : GitPullRequest;
   return (
     <a
       href={event.data.url}
@@ -251,14 +256,16 @@ function PullRequestCard({ event }: { event: RunEventDto }) {
       rel="noreferrer"
       className="group my-3 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 hover:border-line-strong"
     >
-      <span className="grid h-8 w-8 place-items-center rounded-full bg-ok-soft">
-        <GitPullRequest className="h-4 w-4 text-ok" aria-hidden />
+      <span className={`grid h-8 w-8 place-items-center rounded-full ${closed ? "bg-sunken" : "bg-ok-soft"}`}>
+        <Icon className={`h-4 w-4 ${closed ? "text-ink-faint" : "text-ok"}`} aria-hidden />
       </span>
       <span className="min-w-0">
-        <span className="block text-sm font-semibold">Pull request #{event.data.number} opened</span>
+        <span className="block text-sm font-semibold">
+          Pull request #{event.data.number} {merged ? "merged" : closed ? "closed" : "opened"}
+        </span>
         <span className="block truncate font-mono text-[11px] text-ink-faint">{event.data.branch}</span>
       </span>
-      <span className="ml-auto text-xs font-medium text-ink-muted group-hover:text-ink">Review on GitHub →</span>
+      <span className="ml-auto text-xs font-medium text-ink-muted group-hover:text-ink">{merged || closed ? "View" : "Review"} on GitHub →</span>
     </a>
   );
 }
@@ -306,7 +313,17 @@ function RefusedNote({ event }: { event: RunEventDto }) {
   );
 }
 
-function EventView({ event, plans, awaitingApproval }: { event: RunEventDto; plans: RunEventDto[]; awaitingApproval: boolean }) {
+function EventView({
+  event,
+  plans,
+  awaitingApproval,
+  prState = null,
+}: {
+  event: RunEventDto;
+  plans: RunEventDto[];
+  awaitingApproval: boolean;
+  prState?: PrState | null;
+}) {
   switch (event.type) {
     case "agent.message":
       return (
@@ -335,7 +352,31 @@ function EventView({ event, plans, awaitingApproval }: { event: RunEventDto; pla
     case "checks.completed":
       return <ChecksCard event={event} />;
     case "pr.opened":
-      return <PullRequestCard event={event} />;
+      return <PullRequestCard event={event} prState={prState} />;
+    case "pr.merged":
+      return (
+        <Note icon={<GitMerge className="h-4 w-4 text-ok" />} at={event.at}>
+          {event.data.by ? (
+            <>
+              <span className="font-medium text-ink">{event.data.by}</span> merged the pull request
+            </>
+          ) : (
+            "The pull request was merged"
+          )}
+        </Note>
+      );
+    case "pr.closed":
+      return (
+        <Note icon={<GitPullRequestClosed className="h-4 w-4" />} at={event.at}>
+          The pull request was closed without merging
+        </Note>
+      );
+    case "pr.reopened":
+      return (
+        <Note icon={<GitPullRequest className="h-4 w-4" />} at={event.at}>
+          The pull request was reopened
+        </Note>
+      );
     case "run.failed":
       return <FailureCard event={event} />;
     case "run.cancelled":
@@ -368,8 +409,10 @@ function StageBlock({
   toggle,
   plans,
   awaitingApproval,
+  prState,
 }: {
   stage: Stage;
+  prState: PrState | null;
   choices: ReadonlyMap<string, boolean>;
   choose: (id: string, open: boolean) => void;
   opened: ReadonlySet<string>;
@@ -458,7 +501,7 @@ function StageBlock({
       )}
 
       {after.map((event) => (
-        <EventView key={event.seq} event={event} plans={plans} awaitingApproval={awaitingApproval} />
+        <EventView key={event.seq} event={event} plans={plans} awaitingApproval={awaitingApproval} prState={prState} />
       ))}
     </section>
   );
@@ -521,6 +564,7 @@ export function Conversation({
             toggle={toggle}
             plans={plans}
             awaitingApproval={run.state === "awaiting_approval"}
+            prState={run.prState}
           />
         ))}
       </div>

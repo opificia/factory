@@ -17,6 +17,7 @@ import {
   TERMINAL_STATES,
   type CheckFinding,
   type IssueRef,
+  type PrState,
   type RunEventBody,
   type RunEventOf,
   type RunState,
@@ -41,6 +42,7 @@ export type RunSnapshot = {
   headSha: string | null;
   prUrl: string | null;
   prNumber: number | null;
+  prState: PrState | null;
   costUsd: number;
   budgetUsd: number;
   deadlineAt: string;
@@ -71,6 +73,8 @@ export type Command =
       deletions: number;
     }
   | { type: "RecordPullRequest"; url: string; number: number }
+  // What a person did with the pull request on GitHub, seen by the poller.
+  | { type: "RecordPullRequestState"; state: PrState; mergedBy: string | null }
   | { type: "Fail"; reason: string; stage?: Stage }
   | { type: "Cancel"; by: string };
 
@@ -179,6 +183,14 @@ export function decide(run: RunSnapshot | null, command: Command): RunEventBody[
     case "RecordPullRequest":
       expectState(run, ["publishing"], "record the pull request");
       return [{ type: "pr.opened", data: { url: command.url, number: command.number, branch: run.branch } }];
+    case "RecordPullRequestState": {
+      expectState(run, ["pr_opened"], "record the state of the pull request");
+      // A merge is final; otherwise only a change is an event.
+      if (run.prState === "merged" || run.prState === command.state) return [];
+      if (command.state === "merged") return [{ type: "pr.merged", data: { by: command.mergedBy } }];
+      if (command.state === "closed") return [{ type: "pr.closed", data: {} }];
+      return [{ type: "pr.reopened", data: {} }];
+    }
     case "Fail":
       if (isTerminal(run.state)) return [];
       return [{ type: "run.failed", data: { reason: command.reason, ...(command.stage ? { stage: command.stage } : {}) } }];
@@ -204,6 +216,7 @@ export function evolve(run: RunSnapshot | null, event: RunEventBody, runId: stri
       headSha: null,
       prUrl: null,
       prNumber: null,
+      prState: null,
       costUsd: 0,
       budgetUsd: event.data.budgetUsd,
       deadlineAt: event.data.deadlineAt,
@@ -234,7 +247,13 @@ export function evolve(run: RunSnapshot | null, event: RunEventBody, runId: stri
     case "checks.completed":
       return event.data.passed ? { ...run, state: "publishing" } : run;
     case "pr.opened":
-      return { ...run, state: "pr_opened", prUrl: event.data.url, prNumber: event.data.number };
+      return { ...run, state: "pr_opened", prUrl: event.data.url, prNumber: event.data.number, prState: "open" };
+    case "pr.merged":
+      return { ...run, prState: "merged" };
+    case "pr.closed":
+      return { ...run, prState: "closed" };
+    case "pr.reopened":
+      return { ...run, prState: "open" };
     case "run.failed":
       return { ...run, state: "failed", costUsd: run.costUsd + (event.data.costUsd ?? 0) };
     case "run.cancelled":

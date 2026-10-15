@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { RunEventDto, RunState } from "@opificia/contracts";
+import type { PrState, RunEventDto, RunState } from "@opificia/contracts";
 
 /**
  * How the web app speaks about a run's state. Colour is kept for three things:
@@ -29,6 +29,17 @@ export const STATE_META: Record<RunState, StateMeta> = {
   failed: { label: "Failed", short: "Failed", tone: "broken" },
   cancelled: { label: "Cancelled", short: "Cancelled", tone: "quiet" },
 };
+
+const PR_META: Record<PrState, StateMeta> = {
+  open: { label: "Pull request ready for your review", short: "Review PR", tone: "attention" },
+  merged: { label: "Merged", short: "Merged", tone: "done" },
+  closed: { label: "Closed without merging", short: "Closed", tone: "quiet" },
+};
+
+/** How to speak about a run: by its state, and once its pull request is open, by what happened to it. */
+export function runMeta(state: RunState, prState?: PrState | null): StateMeta {
+  return state === "pr_opened" && prState ? PR_META[prState] : STATE_META[state];
+}
 
 /** Text and soft background classes for each tone. */
 export const TONE_CLASSES: Record<Tone, { text: string; soft: string; dot: string }> = {
