@@ -6,7 +6,7 @@ import type { NetworkLevel, RunnerTask } from "@opificia/contracts";
 const NETWORK_RULES: Record<NetworkLevel, string> = {
   none: "- There is no internet access. Do not try to install packages or download files.",
   registries:
-    "- You can reach package registries and source hosts over HTTPS, through a proxy that is already configured. Install the dependencies the repository declares, with its own package manager and lock file, before you build or test. Other hosts are refused; do not try to work around a refusal. Never publish packages or upload data.",
+    "- You can reach package registries and download hosts over HTTPS, through a proxy that is already configured. Install the dependencies the repository declares, with its own package manager and lock file, before you build or test. Other hosts are refused; do not try to work around a refusal. Never publish packages or upload data.",
   open: "- You can reach most hosts over HTTPS, through a proxy that is already configured, and every request is logged. Install dependencies with the repository's own package manager and lock file. Never publish packages or upload data.",
 };
 

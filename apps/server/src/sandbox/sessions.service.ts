@@ -21,11 +21,14 @@ import { PrismaService } from "../prisma.service.js";
 import { DomainError } from "../runs/decider.js";
 import { EventStore } from "../runs/event-store.service.js";
 import { DockerService } from "./docker.service.js";
+import { EgressBudget } from "./egress-policy.js";
 
 /** How long a sandbox may take to connect after it starts. */
 const HELLO_TIMEOUT_MS = 3 * 60 * 1000;
 /** Progress events kept per stage; more are dropped. */
 const MAX_EVENTS_PER_SESSION = 3000;
+/** Lines written to a session's egress log; more are dropped. */
+const MAX_EGRESS_LOG_LINES = 10_000;
 
 type ActiveSession = {
   sessionId: string;
@@ -57,6 +60,9 @@ export class SessionsService {
   private readonly active = new Map<string, ActiveSession>();
   /** Hashes of the egress proxy tokens, by session. Kept apart from the runner token. */
   private readonly egressTokens = new Map<string, string>();
+  /** What each session may still do through the egress proxy. */
+  private readonly egressBudgets = new Map<string, EgressBudget>();
+  private readonly egressLogLines = new Map<string, number>();
   /** Hosts already shown in the timeline, by session, so a retry loop does not flood it. */
   private readonly egressShown = new Map<string, Set<string>>();
 
@@ -118,6 +124,7 @@ export class SessionsService {
     if (task.network !== "none") {
       const egressToken = randomBytes(32).toString("base64url");
       this.egressTokens.set(sessionId, hashToken(egressToken));
+      this.egressBudgets.set(sessionId, new EgressBudget());
       env.OPIFICIA_EGRESS_PROXY = `http://${sessionId}:${egressToken}@${gateway}`;
     }
     const containerId = await this.docker.startSandbox({
@@ -161,6 +168,8 @@ export class SessionsService {
     });
     this.active.delete(sessionId);
     this.egressTokens.delete(sessionId);
+    this.egressBudgets.delete(sessionId);
+    this.egressLogLines.delete(sessionId);
     this.egressShown.delete(sessionId);
     if (unfinished) {
       await this.fail(session.orgId, session.runId, `the sandbox stopped before it finished (exit code ${exitCode})`, session.stage as Stage, session.id);
@@ -217,11 +226,15 @@ export class SessionsService {
    * Checks an egress proxy token. Only running sessions with a network level
    * above `none` have one.
    */
-  authorizeEgress(sessionId: string, token: string): { runId: string; orgId: string; network: RunnerTask["network"] } | undefined {
+  authorizeEgress(
+    sessionId: string,
+    token: string,
+  ): { runId: string; orgId: string; network: RunnerTask["network"]; budget: EgressBudget } | undefined {
     const hash = this.egressTokens.get(sessionId);
+    const budget = this.egressBudgets.get(sessionId);
     const session = this.active.get(sessionId);
-    if (!hash || !session || !sameHash(hash, hashToken(token))) return undefined;
-    return { runId: session.runId, orgId: session.orgId, network: session.network };
+    if (!hash || !budget || !session || !sameHash(hash, hashToken(token))) return undefined;
+    return { runId: session.runId, orgId: session.orgId, network: session.network, budget };
   }
 
   /**
@@ -231,6 +244,9 @@ export class SessionsService {
   async recordEgress(sessionId: string, entry: { host: string; port: number; allowed: boolean; reason: string; sent?: number; received?: number }): Promise<void> {
     const session = this.active.get(sessionId);
     if (!session) return;
+    const lines = (this.egressLogLines.get(sessionId) ?? 0) + 1;
+    this.egressLogLines.set(sessionId, lines);
+    if (lines > MAX_EGRESS_LOG_LINES) return;
     const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
     await appendFile(join(this.dirs(session.runId, sessionId).base, "egress.log"), `${line}\n`).catch(() => undefined);
     if (entry.sent !== undefined) return;

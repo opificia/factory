@@ -56,7 +56,7 @@ export type RunnerHelloParams = z.infer<typeof RunnerHelloParams>;
 
 /**
  * What a sandbox may reach on the network (ADR-0007): nothing but the gateway,
- * package registries and source hosts on a list, or every host not on the
+ * package registries and download hosts on a list, or every host not on the
  * deny list.
  */
 export const NetworkLevel = z.enum(["none", "registries", "open"]);

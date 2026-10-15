@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { decideHost, isPublicAddress, matchesList, normalizeHost } from "./egress-policy.js";
+import { EgressBudget, decideHost, isPublicAddress, matchesList, normalizeHost } from "./egress-policy.js";
 
 const decide = (host: string, level: "none" | "registries" | "open" = "registries", port = 443, extraHosts: string[] = []) =>
   decideHost({ host, port, level, extraHosts });
@@ -29,6 +29,14 @@ describe("decideHost", () => {
     expect(decide("registry.npmjs.org.evil.test")).toMatchObject({ allowed: false });
     expect(decide("evil-registry.npmjs.org")).toMatchObject({ allowed: false });
     expect(decide("gist.github.com")).toMatchObject({ allowed: false });
+  });
+
+  it("allows GitHub's download hosts but not the forges, which accept pushes", () => {
+    expect(decide("codeload.github.com")).toMatchObject({ allowed: true });
+    for (const forge of ["github.com", "gitlab.com", "codeberg.org"]) {
+      expect(decide(forge), forge).toMatchObject({ allowed: false });
+    }
+    expect(decide("github.com", "registries", 443, ["github.com"])).toMatchObject({ allowed: true });
   });
 
   it("refuses the deny list at every level, even when the operator allows it", () => {
@@ -90,5 +98,28 @@ describe("isPublicAddress", () => {
     ]) {
       expect(isPublicAddress(address), address).toBe(false);
     }
+  });
+});
+
+describe("EgressBudget", () => {
+  const limits = { maxOpen: 2, maxTotal: 3, maxSentPerConnection: 100, maxSentPerSession: 150 };
+
+  it("limits open and total connections", () => {
+    const budget = new EgressBudget(limits);
+    expect(budget.openConnection().ok).toBe(true);
+    expect(budget.openConnection().ok).toBe(true);
+    expect(budget.openConnection()).toMatchObject({ ok: false, reason: "the session has 2 connections open" });
+    budget.closeConnection();
+    expect(budget.openConnection().ok).toBe(true);
+    budget.closeConnection();
+    expect(budget.openConnection()).toMatchObject({ ok: false, reason: "the session has used its 3 connections" });
+  });
+
+  it("limits bytes sent per connection and per session", () => {
+    const budget = new EgressBudget(limits);
+    expect(budget.addSent(90, 90)).toBeUndefined();
+    expect(budget.addSent(20, 110)).toBe("the connection sent more than 100 bytes");
+    expect(budget.addSent(30, 30)).toBeUndefined();
+    expect(budget.addSent(20, 50)).toBe("the session sent more than 150 bytes");
   });
 });

@@ -121,7 +121,7 @@ The implementation stage can install dependencies through an egress proxy in the
 | Level | The sandbox can reach |
 | --- | --- |
 | `none` | Nothing but the gateway. |
-| `registries` (default) | Package registries and source hosts on a built-in list, plus the hosts in `OPIFICIA_EGRESS_ALLOW`. |
+| `registries` (default) | Package registries and download hosts on a built-in list, plus the hosts in `OPIFICIA_EGRESS_ALLOW`. |
 | `open` | Every host that is not on the deny list. |
 
 The proxy:
@@ -129,7 +129,10 @@ The proxy:
 - only handles HTTPS on port 443, through `CONNECT`, and does not decrypt it. It sees the host name and the number of bytes, not the content;
 - refuses IP addresses, and host names that resolve to private, loopback or link-local addresses, such as the Docker host or a cloud metadata service;
 - refuses a deny list at every level: telemetry and direct model access, paste sites, file drops, request catchers and tunnels;
-- gives each sandbox its own proxy token, apart from the runner token.
+- gives each sandbox its own proxy token, apart from the runner token;
+- limits each sandbox to 32 open connections and 4,000 in total, and to 1 MB sent per connection and 32 MB in total. Installing dependencies downloads a lot and sends little; the limits keep an upload small and keep one sandbox from wearing down the server.
+
+The built-in list holds package registries and download-only hosts, such as GitHub's source archives and release assets. It does not hold `github.com`, `gitlab.com` or `codeberg.org`, because they also accept pushes. Add them to `OPIFICIA_EGRESS_ALLOW` if your repositories need them, for example for dependencies fetched with git.
 
 The run timeline shows the first decision for each host. Every connection is logged in `.data/runs/<run>/<session>/egress.log`. The planning stage never has network access.
 
@@ -143,7 +146,7 @@ This is a prototype. In particular:
 
 - A plain container is not a strong security boundary. Stronger isolation, such as gVisor, comes later (ADR-0004, step 2).
 - The issue text reaches the model. Someone who can write issues in your repository can try to steer the agent. The plan approval and the checks above limit the damage, but do not label issues from people you do not trust.
-- With network access, an agent that someone steered could still send data out through an allowed host, for example in a request to a package registry. The proxy does not see request bodies. For a repository whose code must not leave your machine, set `OPIFICIA_SANDBOX_NETWORK=none`.
+- With network access, an agent that someone steered could still send data out through an allowed host. For example, an issue could contain someone's npm token, and the agent could publish a package with it. The proxy does not see request bodies; the upload limits keep such a leak small, but cannot stop a short secret. For a repository whose code must not leave your machine, set `OPIFICIA_SANDBOX_NETWORK=none`.
 - Only the people in `OPIFICIA_OPERATOR_EMAILS` can link installations of your GitHub App. A shared install also needs to check each person's own access on GitHub.
 - Email addresses are not verified. Set `OPIFICIA_SIGNUP=closed` once you have created your account, so nobody else can sign up.
 - The harness enforces the USD budget inside the sandbox. The model proxy only caps the number of model requests per stage (`OPIFICIA_MAX_MODEL_REQUESTS`). An agent that bypasses the harness can spend more than the budget, up to that cap. Metering spend in the proxy comes later.

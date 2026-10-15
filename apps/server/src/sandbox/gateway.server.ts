@@ -29,6 +29,18 @@ const DROP_RESPONSE_HEADERS = new Set(["content-encoding", "content-length", "tr
 /** An egress connection with no traffic for this long is closed. */
 const EGRESS_IDLE_MS = 5 * 60 * 1000;
 const EGRESS_CONNECT_TIMEOUT_MS = 15_000;
+const EGRESS_LOOKUP_TIMEOUT_MS = 5_000;
+
+/** Resolves a host name, or gives up after a few seconds. */
+async function resolve(host: string): Promise<Array<{ address: string }>> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<[]>((done) => (timer = setTimeout(() => done([]), EGRESS_LOOKUP_TIMEOUT_MS)));
+  try {
+    return await Promise.race([lookup(host, { all: true }).catch(() => []), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * The server sandboxes talk to, on its own port, apart from the API that
@@ -105,10 +117,22 @@ export class SandboxGateway implements OnModuleDestroy {
       return refuse(403, `${host}:${port} refused: ${decision.reason}`);
     }
 
+    const slot = access.budget.openConnection();
+    if (!slot.ok) {
+      await this.sessions.recordEgress(sessionId, { host, port, allowed: false, reason: slot.reason });
+      return refuse(403, `${host}:${port} refused: ${slot.reason}`);
+    }
+    let released = false;
+    const release = () => {
+      if (!released) access.budget.closeConnection();
+      released = true;
+    };
+
     // Resolve here and connect to the address we checked, so a second lookup
     // cannot point the connection somewhere else.
-    const addresses = await lookup(host, { all: true }).catch(() => []);
+    const addresses = await resolve(host);
     if (addresses.length === 0 || !addresses.every((a) => isPublicAddress(a.address))) {
+      release();
       const reason = addresses.length === 0 ? "the host name does not resolve" : "the host resolves to a non-public address";
       await this.sessions.recordEgress(sessionId, { host, port, allowed: false, reason });
       return refuse(403, `${host}:${port} refused: ${reason}`);
@@ -116,16 +140,29 @@ export class SandboxGateway implements OnModuleDestroy {
     await this.sessions.recordEgress(sessionId, { host, port, allowed: true, reason: decision.reason });
 
     const upstream = connect({ host: addresses[0]!.address, port, timeout: EGRESS_CONNECT_TIMEOUT_MS });
-    let sent = head.length;
+    let sent = 0;
     let received = 0;
     let connected = false;
+    let limitReason: string | undefined;
+    const countSent = (bytes: number) => {
+      sent += bytes;
+      const reason = access.budget.addSent(bytes, sent);
+      if (reason && !limitReason) {
+        limitReason = reason;
+        upstream.destroy();
+        client.destroy();
+      }
+    };
     upstream.once("connect", () => {
       connected = true;
       upstream.setTimeout(EGRESS_IDLE_MS);
       client.setTimeout(EGRESS_IDLE_MS);
       client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-      if (head.length > 0) upstream.write(head);
-      client.on("data", (chunk: Buffer) => (sent += chunk.length));
+      if (head.length > 0) {
+        countSent(head.length);
+        upstream.write(head);
+      }
+      client.on("data", (chunk: Buffer) => countSent(chunk.length));
       upstream.on("data", (chunk: Buffer) => (received += chunk.length));
       client.pipe(upstream).pipe(client);
     });
@@ -135,12 +172,14 @@ export class SandboxGateway implements OnModuleDestroy {
     };
     upstream.on("timeout", () => {
       if (connected) return close();
+      release();
       refuse(504, `${host}:${port} did not answer in time`);
       upstream.destroy();
     });
     client.on("timeout", close);
     upstream.on("error", () => {
       if (!connected) {
+        release();
         refuse(502, `${host}:${port} could not be reached`);
         upstream.destroy();
         return;
@@ -149,9 +188,17 @@ export class SandboxGateway implements OnModuleDestroy {
     });
     client.on("error", close);
     upstream.once("close", () => {
+      release();
       if (!connected) return;
       client.destroy();
-      void this.sessions.recordEgress(sessionId, { host, port, allowed: true, reason: "closed", sent, received });
+      void this.sessions.recordEgress(sessionId, {
+        host,
+        port,
+        allowed: !limitReason,
+        reason: limitReason ? `closed: ${limitReason}` : "closed",
+        sent,
+        received,
+      });
     });
   }
 

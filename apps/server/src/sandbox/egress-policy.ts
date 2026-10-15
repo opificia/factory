@@ -13,7 +13,7 @@ import type { NetworkLevel } from "@opificia/contracts";
  * ".example.org" matches "example.org" and "a.example.org".
  */
 
-/** Package registries and source hosts that every level except `none` allows. */
+/** Package registries and download hosts that every level except `none` allows. */
 export const BUILT_IN_HOSTS: readonly string[] = [
   // npm, Yarn
   "registry.npmjs.org",
@@ -39,13 +39,13 @@ export const BUILT_IN_HOSTS: readonly string[] = [
   "security.debian.org",
   "archive.ubuntu.com",
   "security.ubuntu.com",
-  // Source hosts and their release downloads
-  "github.com",
+  // Download-only hosts of GitHub: source archives and release assets. The
+  // forges themselves (github.com, gitlab.com, codeberg.org) also accept
+  // pushes, so an agent with a token planted in an issue could upload code
+  // there. Operators who need them add them to OPIFICIA_EGRESS_ALLOW.
   "codeload.github.com",
   "objects.githubusercontent.com",
   "release-assets.githubusercontent.com",
-  "gitlab.com",
-  "codeberg.org",
 ];
 
 /**
@@ -188,4 +188,61 @@ export function isPublicAddress(address: string): boolean {
     return !NON_PUBLIC.check(address, "ipv6");
   }
   return false;
+}
+
+/**
+ * Limits per sandbox session. Installing dependencies downloads a lot and sends
+ * little, so a cap on what a sandbox sends limits how much it could upload
+ * through an allowed host, for example with a publishing token an attacker put
+ * in an issue. The other limits keep one sandbox from wearing down the server.
+ */
+export type EgressLimits = {
+  maxOpen: number;
+  maxTotal: number;
+  maxSentPerConnection: number;
+  maxSentPerSession: number;
+};
+
+export const EGRESS_LIMITS: EgressLimits = {
+  /** Connections open at the same time. */
+  maxOpen: 32,
+  /** Connections over the whole session. */
+  maxTotal: 4000,
+  /** Bytes a sandbox may send on one connection. */
+  maxSentPerConnection: 1024 * 1024,
+  /** Bytes a sandbox may send over the whole session. */
+  maxSentPerSession: 32 * 1024 * 1024,
+};
+
+/** Counts one session's egress against the limits. */
+export class EgressBudget {
+  private open = 0;
+  private total = 0;
+  private sent = 0;
+
+  constructor(private readonly limits: EgressLimits = EGRESS_LIMITS) {}
+
+  /** Reserves a connection, or says why it is refused. */
+  openConnection(): { ok: true } | { ok: false; reason: string } {
+    if (this.total >= this.limits.maxTotal) return { ok: false, reason: `the session has used its ${this.limits.maxTotal} connections` };
+    if (this.open >= this.limits.maxOpen) return { ok: false, reason: `the session has ${this.limits.maxOpen} connections open` };
+    this.open += 1;
+    this.total += 1;
+    return { ok: true };
+  }
+
+  closeConnection(): void {
+    this.open = Math.max(0, this.open - 1);
+  }
+
+  /**
+   * Counts bytes the sandbox sends on a connection that has already sent
+   * `connectionSent` bytes. Returns a reason when a limit is passed.
+   */
+  addSent(bytes: number, connectionSent: number): string | undefined {
+    this.sent += bytes;
+    if (connectionSent > this.limits.maxSentPerConnection) return `the connection sent more than ${this.limits.maxSentPerConnection} bytes`;
+    if (this.sent > this.limits.maxSentPerSession) return `the session sent more than ${this.limits.maxSentPerSession} bytes`;
+    return undefined;
+  }
 }
