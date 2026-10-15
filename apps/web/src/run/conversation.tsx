@@ -1,25 +1,33 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { PrState, RunDetail, RunEventDto } from "@opificia/contracts";
+import type { CheckFinding, PrState, RunDetail, RunEventDto } from "@opificia/contracts";
 import {
   Ban,
   Check,
   ChevronRight,
   CircleAlert,
+  EyeOff,
   FilePen,
   FileSearch,
+  FolderGit2,
   GitMerge,
   GitPullRequest,
   GitPullRequestClosed,
   Globe,
+  History,
+  KeyRound,
+  Lock,
   MessageSquareText,
+  Ruler,
   ShieldAlert,
   ShieldCheck,
   SquareTerminal,
+  UserX,
   Wrench,
 } from "lucide-react";
 import { Suspense, lazy, useRef, useState, type ReactNode } from "react";
+import { problems, ruleLabel } from "../checks.ts";
 import { clock, usd, when } from "../format.ts";
 import { useNow } from "../hooks.ts";
 import {
@@ -56,6 +64,16 @@ const KIND_ICON: Record<Kind, typeof Wrench> = {
   edit: FilePen,
   network: Globe,
   other: Wrench,
+};
+
+const RULE_ICON: Record<CheckFinding["rule"], typeof Wrench> = {
+  protected_path: Lock,
+  size: Ruler,
+  secret: KeyRound,
+  hidden_unicode: EyeOff,
+  submodule: FolderGit2,
+  history: History,
+  commit: UserX,
 };
 
 function ToolLine({ call, live = false }: { call: RunEventDto; live?: boolean }) {
@@ -223,7 +241,7 @@ function ChecksCard({ event }: { event: RunEventDto }) {
     <section className={`my-3 rounded-xl border px-4 py-3 ${passed ? "border-line bg-surface" : "border-bad/30 bg-bad-soft"}`}>
       <div className="flex items-center gap-3">
         {passed ? <ShieldCheck className="h-4 w-4 text-ok" aria-hidden /> : <ShieldAlert className="h-4 w-4 text-bad" aria-hidden />}
-        <span className="text-sm font-semibold">{passed ? "Checks passed" : "Checks failed"}</span>
+        <span className="text-sm font-semibold">{passed ? "Checks passed" : `Checks failed: ${problems(findings.length)}`}</span>
         <span className="ml-auto text-xs text-ink-muted tabular-nums">
           {files} {files === 1 ? "file" : "files"} <span className="text-ok">+{additions}</span> <span className="text-bad">−{deletions}</span>
         </span>
@@ -231,14 +249,25 @@ function ChecksCard({ event }: { event: RunEventDto }) {
       {passed ? (
         <p className="mt-1 pl-7 text-xs text-ink-muted">No protected paths, secrets or hidden characters, and within the size limits.</p>
       ) : (
-        <ul className="mt-2 space-y-1 pl-7 text-[13px] text-bad">
-          {findings.map((f, i) => (
-            <li key={i}>
-              <span className="font-mono text-[11px]">{f.rule}</span> {f.message}
-              {f.path && <span className="font-mono text-[11px]"> ({f.path})</span>}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="mt-2 divide-y divide-bad/20 text-[13px] text-bad">
+            {findings.map((f, i) => {
+              const Icon = RULE_ICON[f.rule];
+              return (
+                <li key={i} className="flex gap-3 py-2">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <div className="min-w-0">
+                    <p>
+                      <span className="font-medium">{ruleLabel(f.rule)}</span> · {f.message}
+                    </p>
+                    {f.path && <p className="mt-0.5 font-mono text-[11px] break-all">{f.path}</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="border-t border-bad/20 pt-2 text-xs text-ink-muted">Nothing was pushed. To try again, fix the cause and open a new issue.</p>
+        </>
       )}
     </section>
   );
