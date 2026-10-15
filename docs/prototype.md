@@ -98,7 +98,7 @@ Each run has a budget of 15 USD and 60 minutes of agent time; the time spent wai
 
 **The server checks the result before it pushes.** These checks do not depend on the model:
 
-- no changes to CI workflows and scripts, `CODEOWNERS`, `MAINTAINERS.md`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` or `.claude/`;
+- no changes to CI workflows and scripts, git hooks in `.githooks/`, `CODEOWNERS`, `MAINTAINERS.md`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` or `.claude/`;
 - no new submodules;
 - at most 50 files and 2,000 changed lines;
 - no strings that look like API keys, tokens or private keys;
