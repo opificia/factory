@@ -1,0 +1,27 @@
+{
+  "name": "@opificia/harness-claude",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The claude harness adapter for Opificia, built on the Claude Agent SDK",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "opificia-harness-claude": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.300",
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@opificia/contracts": "workspace:*",
+    "@opificia/runner": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

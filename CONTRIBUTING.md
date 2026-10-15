@@ -4,7 +4,7 @@ Thank you for your interest in Opificia AI. This guide explains how to contribut
 
 ## What we need now
 
-Opificia is in its foundation phase. There is no product code yet, so the most useful contributions right now are:
+Opificia is moving from its foundation phase to a first working loop. A prototype exists (see [`docs/prototype.md`](docs/prototype.md)), but most of the design is still open, so the most useful contributions right now are:
 
 - **Documentation**: clearer policies, fixes to wording, better explanations.
 - **RFCs and design discussion**: how the factory should work, which interfaces it needs, how to keep it self-hostable.

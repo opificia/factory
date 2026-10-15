@@ -1,0 +1,11 @@
+# Keep secrets, local data and build output out of every image build.
+**/.env
+**/.env.*
+**/*.pem
+.data
+.git
+**/node_modules
+**/dist
+apps/server/src/generated
+brand
+website

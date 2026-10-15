@@ -1,0 +1,25 @@
+{
+  "name": "opificia",
+  "private": true,
+  "description": "Opificia AI: an open-source software factory",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev": "pnpm --parallel --filter @opificia/server --filter @opificia/web dev",
+    "db:migrate": "pnpm --filter @opificia/server db:migrate",
+    "sandbox:build": "docker build -t opificia/harness-claude:dev -f plugins/harness-claude/Dockerfile .",
+    "db:deploy": "pnpm --filter @opificia/server db:deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  }
+}

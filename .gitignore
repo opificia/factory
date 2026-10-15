@@ -21,3 +21,12 @@ $RECYCLE.BIN/
 .env.*
 !.env.example
 *.pem
+
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+apps/server/src/generated/
+
+# Local run data: repository caches, run files and bundles
+.data/

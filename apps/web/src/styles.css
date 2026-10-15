@@ -1,0 +1,8 @@
+/* SPDX-FileCopyrightText: The Opificia Authors */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #1f3a5f;
+}
