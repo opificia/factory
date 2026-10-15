@@ -1,9 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="brand/opificia-lockup-reverse.svg">
-  <img src="brand/opificia-lockup.svg" alt="Opificia AI" width="320">
-</picture>
-
-**Software, made in the open.**
+<img src="website/assets/opificia-social-preview.png" alt="Opificia AI: Software, made in the open." width="640">
 
 Opificia AI is an open-source software factory: AI agents turn tickets into reviewed, tested pull requests, on infrastructure and models you control.
 
