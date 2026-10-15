@@ -6,7 +6,7 @@
 #   markdownlint       Markdown style (.markdownlint.yaml)
 #   Link check         links in Markdown files (.lychee.toml). Links inside the
 #                      repository always; external links only in changed files on
-#                      pull requests, and in every file on main and weekly
+#                      pull requests and pushes, and in every file weekly
 #   Pull request title Conventional Commits, since squash merges use the title
 #
 # Scorecard, Labels and Website stay in their own workflows: they run on other
@@ -76,25 +76,31 @@ jobs:
           fail: true
           jobSummary: true
           format: markdown
-      # A slow external host can hold a run up for minutes, and a pull request
-      # rarely breaks a link it does not touch. Pull requests check external
-      # links only in the Markdown files they change. Pushes to main, the
-      # weekly run and manual runs check every file. The action passes its
-      # arguments through the shell, so only plain file names are used.
+      # A slow external host can hold a run up for minutes, and a change rarely
+      # breaks a link it does not touch. Pull requests and pushes to main check
+      # external links only in the Markdown files they change, so one slow host
+      # elsewhere does not turn them red. The weekly run and manual runs check
+      # every file. The action passes its arguments through the shell, so only
+      # plain file names are used.
       - name: Choose the files for the external links
         id: files
         env:
           EVENT: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" != pull_request ]; then
+          markdown='select(.status != "removed" and (.filename | endswith(".md"))) | .filename'
+          if [ "$EVENT" = pull_request ]; then
+            changed="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq ".[] | $markdown")"
+          elif [ "$EVENT" = push ] && [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$BEFORE" =~ ^0+$ ]]; then
+            changed="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --jq ".files[] | $markdown")"
+          else
             echo 'files="./**/*.md"' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          changed="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
-            --jq '.[] | select(.status != "removed" and (.filename | endswith(".md"))) | .filename')"
           files="$(grep -E '^[A-Za-z0-9._/-]+$' <<< "$changed" | sed 's#^#./#' | tr '\n' ' ' || true)"
           echo "files=$files" >> "$GITHUB_OUTPUT"
           echo "Markdown files to check: ${files:-none}"
