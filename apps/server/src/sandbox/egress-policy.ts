@@ -205,8 +205,9 @@ export type EgressLimits = {
 
 export const EGRESS_LIMITS: EgressLimits = {
   /**
-   * Connections open at the same time. With 32, `pnpm install` in Opificia's
-   * own repository hit the limit hundreds of times and had to retry.
+   * Connections open at the same time. A new connection over this limit waits
+   * for a free one (`waitForConnection`) instead of being refused: package
+   * managers open many connections at once and treat a refusal as an error.
    */
   maxOpen: 64,
   /** Connections over the whole session. */
@@ -236,6 +237,39 @@ export class EgressBudget {
 
   closeConnection(): void {
     this.open = Math.max(0, this.open - 1);
+    this.waiting.shift()?.();
+  }
+
+  private readonly waiting: (() => void)[] = [];
+
+  /**
+   * Reserves a connection like `openConnection`, but waits up to `timeoutMs`
+   * for one to close when too many are open. `cancelled` stops the wait, for
+   * example when the sandbox gives up on the connection.
+   */
+  async waitForConnection(timeoutMs: number, cancelled?: AbortSignal): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const slot = this.openConnection();
+      if (slot.ok || this.total >= this.limits.maxTotal) return slot;
+      const left = deadline - Date.now();
+      if (left <= 0 || cancelled?.aborted) return { ok: false, reason: `${slot.reason} and none closed within ${Math.round(timeoutMs / 1000)} s` };
+      await new Promise<void>((resolve) => {
+        const wake = () => {
+          clearTimeout(timer);
+          cancelled?.removeEventListener("abort", stop);
+          resolve();
+        };
+        const stop = () => {
+          const i = this.waiting.indexOf(wake);
+          if (i >= 0) this.waiting.splice(i, 1);
+          wake();
+        };
+        const timer = setTimeout(stop, left);
+        cancelled?.addEventListener("abort", stop, { once: true });
+        this.waiting.push(wake);
+      });
+    }
   }
 
   /**
