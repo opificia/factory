@@ -3,6 +3,19 @@
 
 @import "tailwindcss";
 
+/* Streamdown's components use these classes (ADR-0008). */
+@source "../node_modules/streamdown/dist/*.js";
+
 @theme {
   --color-brand: #1f3a5f;
+
+  /* Tokens that Streamdown's components expect, mapped to our palette. */
+  --color-background: var(--color-white);
+  --color-foreground: var(--color-slate-900);
+  --color-muted: var(--color-slate-100);
+  --color-muted-foreground: var(--color-slate-500);
+  --color-border: var(--color-slate-200);
+  --color-primary: var(--color-brand);
+  --color-primary-foreground: var(--color-white);
+  --color-sidebar: var(--color-slate-50);
 }

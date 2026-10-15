@@ -45,3 +45,4 @@ ADRs are not edited after acceptance, apart from typos and links. To change a de
 | [0005](0005-prototype-stack.md) | Prototype stack | accepted |
 | [0006](0006-sign-off-by-approval.md) | Sign off by approval | accepted |
 | [0007](0007-sandbox-network-policy.md) | Sandbox network policy, with a decision model for unknown hosts | accepted |
+| [0008](0008-render-markdown-with-streamdown.md) | Render Markdown in the web app with Streamdown | accepted |

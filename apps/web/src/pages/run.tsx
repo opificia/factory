@@ -4,10 +4,13 @@
 import { RunDetail, RunEventDto, TERMINAL_STATES } from "@opificia/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { z } from "zod";
 import { api, formatTime, formatUsd } from "../lib.ts";
 import { Button, Card, ErrorText, StateBadge } from "../ui.tsx";
+
+// The Markdown renderer is large, so it loads only when a plan is shown.
+const Markdown = lazy(() => import("../markdown.tsx").then((m) => ({ default: m.Markdown })));
 
 /** Follows the run's event stream. The server resumes from Last-Event-ID. */
 function useRunEvents(runId: string, onEvent: () => void): RunEventDto[] {
@@ -178,9 +181,11 @@ export function RunPage() {
 
       {r.plan && (
         <Card title="Plan">
-          <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-4 font-sans text-sm leading-relaxed">
-            {r.plan}
-          </pre>
+          <div className="max-h-[32rem] overflow-auto rounded-md bg-slate-50 p-4">
+            <Suspense fallback={<p className="whitespace-pre-wrap text-sm leading-relaxed">{r.plan}</p>}>
+              <Markdown>{r.plan}</Markdown>
+            </Suspense>
+          </div>
           {r.state === "awaiting_approval" && (
             <div className="mt-4 space-y-3">
               <p className="text-sm text-slate-600">Nothing is implemented until you approve the plan.</p>

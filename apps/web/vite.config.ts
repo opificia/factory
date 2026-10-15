@@ -9,6 +9,9 @@ import { defineConfig } from "vite";
 // one origin and the session cookie works without CORS.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // The Markdown renderer is imported lazily, so Vite would find it only on the
+  // first run page and reload with a second copy of React. Bundle it up front.
+  optimizeDeps: { include: ["streamdown"] },
   server: {
     port: 5173,
     strictPort: true,
