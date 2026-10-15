@@ -54,6 +54,14 @@ export const RunnerHelloParams = z.object({
 });
 export type RunnerHelloParams = z.infer<typeof RunnerHelloParams>;
 
+/**
+ * What a sandbox may reach on the network (ADR-0007): nothing but the gateway,
+ * package registries and download hosts on a list, or every host not on the
+ * deny list.
+ */
+export const NetworkLevel = z.enum(["none", "registries", "open"]);
+export type NetworkLevel = z.infer<typeof NetworkLevel>;
+
 /** What the sandbox must do. The repository is in `/in/repo.bundle`. */
 export const RunnerTask = z.object({
   runId: z.uuid(),
@@ -78,6 +86,8 @@ export const RunnerTask = z.object({
   maxBudgetUsd: z.number().positive(),
   maxTurns: z.number().int().positive(),
   protectedPaths: z.array(z.string()),
+  /** The network level of this stage. Package installs need more than `none`. */
+  network: NetworkLevel.default("none"),
   commit: z.object({
     authorName: z.string(),
     authorEmail: z.string(),

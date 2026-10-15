@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, mkdir, stat } from "node:fs/promises";
+import { appendFile, chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import {
@@ -21,17 +21,21 @@ import { PrismaService } from "../prisma.service.js";
 import { DomainError } from "../runs/decider.js";
 import { EventStore } from "../runs/event-store.service.js";
 import { DockerService } from "./docker.service.js";
+import { EgressBudget } from "./egress-policy.js";
 
 /** How long a sandbox may take to connect after it starts. */
 const HELLO_TIMEOUT_MS = 3 * 60 * 1000;
 /** Progress events kept per stage; more are dropped. */
 const MAX_EVENTS_PER_SESSION = 3000;
+/** Lines written to a session's egress log; more are dropped. */
+const MAX_EGRESS_LOG_LINES = 10_000;
 
 type ActiveSession = {
   sessionId: string;
   runId: string;
   orgId: string;
   stage: Stage;
+  network: RunnerTask["network"];
   tokenHash: string;
   socket?: WebSocket;
   events: number;
@@ -54,6 +58,13 @@ function sameHash(a: string, b: string): boolean {
 export class SessionsService {
   private readonly logger = new Logger(SessionsService.name);
   private readonly active = new Map<string, ActiveSession>();
+  /** Hashes of the egress proxy tokens, by session. Kept apart from the runner token. */
+  private readonly egressTokens = new Map<string, string>();
+  /** What each session may still do through the egress proxy. */
+  private readonly egressBudgets = new Map<string, EgressBudget>();
+  private readonly egressLogLines = new Map<string, number>();
+  /** Hosts already shown in the timeline, by session, so a retry loop does not flood it. */
+  private readonly egressShown = new Map<string, Set<string>>();
 
   constructor(
     @Inject(CONFIG) private readonly config: Config,
@@ -101,18 +112,28 @@ export class SessionsService {
     const session = await this.prisma.sandboxSession.findUniqueOrThrow({ where: { id: sessionId } });
     const { inDir, outDir, base } = this.dirs(session.runId, session.id);
     const gateway = this.docker.gatewayUrl;
+    const task = RunnerTask.parse(session.task);
+    const env: Record<string, string> = {
+      OPIFICIA_RUNNER_URL: `ws://${gateway}/runner`,
+      OPIFICIA_RUNNER_TOKEN: token,
+      ANTHROPIC_BASE_URL: `http://${gateway}/model/${sessionId}`,
+      ANTHROPIC_AUTH_TOKEN: token,
+    };
+    // The egress proxy has its own token, so the agent's tools can use the
+    // proxy without holding the runner token.
+    if (task.network !== "none") {
+      const egressToken = randomBytes(32).toString("base64url");
+      this.egressTokens.set(sessionId, hashToken(egressToken));
+      this.egressBudgets.set(sessionId, new EgressBudget());
+      env.OPIFICIA_EGRESS_PROXY = `http://${sessionId}:${egressToken}@${gateway}`;
+    }
     const containerId = await this.docker.startSandbox({
       sessionId,
       runId: session.runId,
       image: this.config.OPIFICIA_SANDBOX_IMAGE,
       inDir,
       outDir,
-      env: {
-        OPIFICIA_RUNNER_URL: `ws://${gateway}/runner`,
-        OPIFICIA_RUNNER_TOKEN: token,
-        ANTHROPIC_BASE_URL: `http://${gateway}/model/${sessionId}`,
-        ANTHROPIC_AUTH_TOKEN: token,
-      },
+      env,
     });
     await this.prisma.sandboxSession.update({ where: { id: sessionId }, data: { containerId } });
     this.logger.log(`run ${session.runId}: started ${session.stage} sandbox ${containerId.slice(0, 12)}`);
@@ -146,6 +167,10 @@ export class SessionsService {
       data: { exitCode, endedAt: new Date(), ...(unfinished ? { status: "failed" } : {}) },
     });
     this.active.delete(sessionId);
+    this.egressTokens.delete(sessionId);
+    this.egressBudgets.delete(sessionId);
+    this.egressLogLines.delete(sessionId);
+    this.egressShown.delete(sessionId);
     if (unfinished) {
       await this.fail(session.orgId, session.runId, `the sandbox stopped before it finished (exit code ${exitCode})`, session.stage as Stage, session.id);
     }
@@ -195,6 +220,46 @@ export class SessionsService {
     if (!session || !sameHash(session.tokenHash, hashToken(token))) return undefined;
     session.modelRequests += 1;
     return { session, overLimit: session.modelRequests > this.config.OPIFICIA_MAX_MODEL_REQUESTS };
+  }
+
+  /**
+   * Checks an egress proxy token. Only running sessions with a network level
+   * above `none` have one.
+   */
+  authorizeEgress(
+    sessionId: string,
+    token: string,
+  ): { runId: string; orgId: string; network: RunnerTask["network"]; budget: EgressBudget } | undefined {
+    const hash = this.egressTokens.get(sessionId);
+    const budget = this.egressBudgets.get(sessionId);
+    const session = this.active.get(sessionId);
+    if (!hash || !budget || !session || !sameHash(hash, hashToken(token))) return undefined;
+    return { runId: session.runId, orgId: session.orgId, network: session.network, budget };
+  }
+
+  /**
+   * Records an egress decision: every decision in the session's egress log,
+   * and the first decision per host and outcome in the run timeline.
+   */
+  async recordEgress(sessionId: string, entry: { host: string; port: number; allowed: boolean; reason: string; sent?: number; received?: number }): Promise<void> {
+    const session = this.active.get(sessionId);
+    if (!session) return;
+    const lines = (this.egressLogLines.get(sessionId) ?? 0) + 1;
+    this.egressLogLines.set(sessionId, lines);
+    if (lines > MAX_EGRESS_LOG_LINES) return;
+    const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
+    await appendFile(join(this.dirs(session.runId, sessionId).base, "egress.log"), `${line}\n`).catch(() => undefined);
+    if (entry.sent !== undefined) return;
+    const key = `${entry.allowed ? "allow" : "refuse"} ${entry.host}`;
+    const shown = this.egressShown.get(sessionId) ?? new Set<string>();
+    this.egressShown.set(sessionId, shown);
+    if (shown.has(key) || shown.size >= 200) return;
+    shown.add(key);
+    await this.progress(session, {
+      kind: "tool",
+      tool: "network",
+      summary: `${entry.allowed ? "allowed" : "refused"} ${entry.host}:${entry.port}: ${entry.reason}`,
+    });
   }
 
   /** Serves the runner protocol on one WebSocket connection. */
@@ -280,6 +345,7 @@ export class SessionsService {
         runId: session.runId,
         orgId: session.orgId,
         stage: session.stage as Stage,
+        network: RunnerTask.parse(session.task).network,
         tokenHash,
         events: 0,
         modelRequests: 0,

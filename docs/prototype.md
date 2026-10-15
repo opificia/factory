@@ -2,7 +2,7 @@
 
 This guide explains how to run the first working loop of Opificia AI on your own machine. A person labels a GitHub issue; Opificia writes a plan, waits for a person to approve it, implements the change in a sandbox, checks the result and opens a pull request. A person reviews and merges it.
 
-The prototype follows [ADR-0004](adr/0004-target-architecture.md) and [ADR-0005](adr/0005-prototype-stack.md). It is meant for one person working on their own repositories. Do not use it on repositories where other people can write issues you do not trust, and do not expose it to the internet. See [Limits](#limits).
+The prototype follows [ADR-0004](adr/0004-target-architecture.md), [ADR-0005](adr/0005-prototype-stack.md) and [ADR-0007](adr/0007-sandbox-network-policy.md). It is meant for one person working on their own repositories. Do not use it on repositories where other people can write issues you do not trust, and do not expose it to the internet. See [Limits](#limits).
 
 ## What you need
 
@@ -90,6 +90,7 @@ Each run has a budget of 15 USD and 60 minutes of agent time; the time spent wai
 
 - sits on an internal Docker network with no route to the internet;
 - reaches only a small gateway, which forwards to the server's sandbox port (3001) and nowhere else;
+- reaches other hosts only through the egress proxy in that port, and only in the implementation stage (see [Network access](#network-access));
 - runs as an unprivileged user, with no Linux capabilities and a read-only root file system;
 - has limits on memory, CPU and processes;
 - receives the repository as a read-only git bundle and returns its result as a git bundle.
@@ -113,12 +114,39 @@ If any check fails, the run fails and nothing is pushed.
 - PostgreSQL holds accounts, organisations, runs and their events.
 - `.data/` in the repository holds a cache of each repository and the files of each run. The log of each sandbox is in `.data/runs/<run>/<session>/container.log`.
 
+## Network access
+
+The implementation stage can install dependencies through an egress proxy in the sandbox gateway ([ADR-0007](adr/0007-sandbox-network-policy.md)). `OPIFICIA_SANDBOX_NETWORK` sets the level:
+
+| Level | The sandbox can reach |
+| --- | --- |
+| `none` | Nothing but the gateway. |
+| `registries` (default) | Package registries and download hosts on a built-in list, plus the hosts in `OPIFICIA_EGRESS_ALLOW`. |
+| `open` | Every host that is not on the deny list. |
+
+The proxy:
+
+- only handles HTTPS on port 443, through `CONNECT`, and does not decrypt it. It sees the host name and the number of bytes, not the content;
+- refuses IP addresses, and host names that resolve to private, loopback or link-local addresses, such as the Docker host or a cloud metadata service;
+- refuses a deny list at every level: telemetry and direct model access, paste sites, file drops, request catchers and tunnels;
+- gives each sandbox its own proxy token, apart from the runner token;
+- limits each sandbox to 32 open connections and 4,000 in total, and to 1 MB sent per connection and 32 MB in total. Installing dependencies downloads a lot and sends little; the limits keep an upload small and keep one sandbox from wearing down the server.
+
+The built-in list holds package registries and download-only hosts, such as GitHub's source archives and release assets. It does not hold `github.com`, `gitlab.com` or `codeberg.org`, because they also accept pushes. Add them to `OPIFICIA_EGRESS_ALLOW` if your repositories need them, for example for dependencies fetched with git.
+
+The run timeline shows the first decision for each host. Every connection is logged in `.data/runs/<run>/<session>/egress.log`. The planning stage never has network access.
+
+To let Opificia work on its own repository, add `binaries.prisma.sh` to `OPIFICIA_EGRESS_ALLOW`. Prisma downloads its engines from there while it installs, and the build fails without them.
+
+The decision model for unknown hosts and the button to allow a host for a repository come later. Until then, a host that is not on the list is refused; add it to `OPIFICIA_EGRESS_ALLOW` if you trust it.
+
 ## Limits
 
 This is a prototype. In particular:
 
 - A plain container is not a strong security boundary. Stronger isolation, such as gVisor, comes later (ADR-0004, step 2).
 - The issue text reaches the model. Someone who can write issues in your repository can try to steer the agent. The plan approval and the checks above limit the damage, but do not label issues from people you do not trust.
+- With network access, an agent that someone steered could still send data out through an allowed host. For example, an issue could contain someone's npm token, and the agent could publish a package with it. The proxy does not see request bodies; the upload limits keep such a leak small, but cannot stop a short secret. For a repository whose code must not leave your machine, set `OPIFICIA_SANDBOX_NETWORK=none`.
 - Only the people in `OPIFICIA_OPERATOR_EMAILS` can link installations of your GitHub App. A shared install also needs to check each person's own access on GitHub.
 - Email addresses are not verified. Set `OPIFICIA_SIGNUP=closed` once you have created your account, so nobody else can sign up.
 - The harness enforces the USD budget inside the sandbox. The model proxy only caps the number of model requests per stage (`OPIFICIA_MAX_MODEL_REQUESTS`). An agent that bypasses the harness can spend more than the budget, up to that cap. Metering spend in the proxy comes later.

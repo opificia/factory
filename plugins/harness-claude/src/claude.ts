@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { RunnerEventParams } from "@opificia/contracts";
+import type { NetworkLevel, RunnerEventParams } from "@opificia/contracts";
 import { protectedPathHook } from "./guard.js";
-import { SYSTEM_APPEND } from "./prompts.js";
+import { systemAppend } from "./prompts.js";
 
 export const READ_ONLY_TOOLS = ["Read", "Glob", "Grep"];
 export const WRITE_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash"];
@@ -17,6 +17,7 @@ export type TurnOptions = {
   maxTurns: number;
   maxBudgetUsd: number;
   protectedPaths: readonly string[];
+  network: NetworkLevel;
   emit: (event: RunnerEventParams) => void;
   signal: AbortSignal;
   /** Session to continue, for the self-review turn. */
@@ -32,12 +33,32 @@ export type TurnResult = {
 };
 
 /**
+ * Proxy settings for the agent's tools, when the stage has network access
+ * (ADR-0007). The egress proxy has its own token, not the runner token. Only
+ * HTTPS goes through it; the gateway itself is reached directly.
+ */
+export function proxyEnv(proxyUrl: string | undefined): Record<string, string> {
+  if (!proxyUrl) return {};
+  const noProxy = "gateway,localhost,127.0.0.1";
+  return {
+    HTTPS_PROXY: proxyUrl,
+    https_proxy: proxyUrl,
+    NO_PROXY: noProxy,
+    no_proxy: noProxy,
+    // Node's own fetch uses the proxy settings only with this flag.
+    NODE_USE_ENV_PROXY: "1",
+  };
+}
+
+/**
  * The environment for the Claude Code process. It replaces the inherited
  * environment, so the runner token does not reach the agent. The model
  * endpoint is the control plane's proxy, which adds the real API key.
  */
-function claudeEnv(): Record<string, string | undefined> {
+function claudeEnv(network: NetworkLevel): Record<string, string | undefined> {
   return {
+    ...(network === "none" ? {} : proxyEnv(process.env.OPIFICIA_EGRESS_PROXY)),
+    npm_config_store_dir: process.env.npm_config_store_dir,
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     LANG: "C.UTF-8",
@@ -89,9 +110,15 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     maxTurns: options.maxTurns,
     maxBudgetUsd: options.maxBudgetUsd,
     settingSources: ["project"],
-    settings: { skipWebFetchPreflight: true, autoMemoryEnabled: false },
-    systemPrompt: { type: "preset", preset: "claude_code", append: SYSTEM_APPEND },
-    env: claudeEnv(),
+    // Opificia records AI help with its own Assisted-by trailer, so Claude
+    // Code's own attribution lines are switched off.
+    settings: {
+      skipWebFetchPreflight: true,
+      autoMemoryEnabled: false,
+      attribution: { commit: "", pr: "", sessionUrl: false },
+    },
+    systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend(options.network) },
+    env: claudeEnv(options.network),
     abortController,
     hooks: {
       PreToolUse: [{ hooks: [protectedPathHook(options.repoDir, options.protectedPaths)] }],
