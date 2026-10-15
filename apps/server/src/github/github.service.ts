@@ -110,6 +110,18 @@ export class GitHubService {
     return { url: data.html_url, number: data.number };
   }
 
+  /** Whether a pull request is open, merged or closed without merging. */
+  async getPullRequestState(
+    installationId: number,
+    fullName: string,
+    number: number,
+  ): Promise<{ state: "open" | "merged" | "closed"; mergedBy: string | null }> {
+    const octokit = await this.octokit(installationId);
+    const { data } = await octokit.rest.pulls.get({ ...splitRepo(fullName), pull_number: number });
+    if (data.merged) return { state: "merged", mergedBy: data.merged_by?.login ?? null };
+    return { state: data.state === "open" ? "open" : "closed", mergedBy: null };
+  }
+
   /** An installation token that can only reach one repository. */
   async repoToken(installationId: number, fullName: string, write: boolean): Promise<string> {
     const { repo } = splitRepo(fullName);

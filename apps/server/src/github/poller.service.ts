@@ -10,7 +10,8 @@ import { GitHubService } from "./github.service.js";
 /**
  * Polls GitHub for open issues with the trigger label and starts a run for
  * each new one (ADR-0005: polling, so the prototype needs no public URL).
- * A command receipt per issue makes this safe to repeat.
+ * A command receipt per issue makes this safe to repeat. It also follows the
+ * pull requests Opificia opened until a person merges or closes them.
  */
 @Injectable()
 export class PollerService implements OnApplicationShutdown {
@@ -32,6 +33,24 @@ export class PollerService implements OnApplicationShutdown {
 
   onApplicationShutdown(): void {
     clearInterval(this.timer);
+  }
+
+  /** Records what happened to the pull requests that are still open, or were closed and may reopen. */
+  private async pollPullRequests(): Promise<void> {
+    const runs = await this.prisma.run.findMany({
+      where: { state: "pr_opened", prState: { in: ["open", "closed"] }, prNumber: { not: null } },
+      select: { id: true, orgId: true, repo: true, installationId: true, prNumber: true, prState: true },
+    });
+    for (const run of runs) {
+      try {
+        const pr = await this.github.getPullRequestState(Number(run.installationId), run.repo, run.prNumber!);
+        if (pr.state === run.prState) continue;
+        await this.events.dispatch(run.orgId, run.id, { type: "RecordPullRequestState", state: pr.state, mergedBy: pr.mergedBy });
+        this.logger.log(`run ${run.id}: pull request #${run.prNumber} is ${pr.state}`);
+      } catch (error) {
+        this.logger.warn(`checking pull request #${run.prNumber} of ${run.repo} failed: ${(error as Error).message}`);
+      }
+    }
   }
 
   async poll(): Promise<void> {
@@ -62,6 +81,7 @@ export class PollerService implements OnApplicationShutdown {
           }
         }
       }
+      await this.pollPullRequests();
     } catch (error) {
       this.logger.warn(`polling GitHub failed: ${(error as Error).message}`);
     } finally {

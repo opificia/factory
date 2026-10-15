@@ -169,7 +169,7 @@ function Header({ run, events, onCancel, cancelling }: { run: RunDetail; events:
           <Budget run={run} />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <StatusPill state={run.state} />
+          <StatusPill state={run.state} prState={run.prState} />
           <Steps run={run} events={events} />
         </div>
       </div>
@@ -235,6 +235,27 @@ function ReviewBar({ busy, onApprove, onRequestChanges }: { busy: boolean; onApp
   );
 }
 
+/** While the pull request is open, the next step is a person's review on GitHub. */
+function PullRequestBar({ url }: { url: string }) {
+  return (
+    <div className="sticky bottom-0 z-10 bg-gradient-to-t from-canvas via-canvas to-canvas/0 pt-6 pb-5">
+      <div className="mx-auto max-w-3xl px-6">
+        <div className="relative flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border border-line bg-surface py-3 pr-3 pl-5 shadow-lg shadow-brand/5">
+          <span className="absolute inset-y-0 left-0 w-1 bg-gold" aria-hidden />
+          <div className="min-w-[14rem] flex-1">
+            <p className="text-sm font-semibold">The pull request is ready for your review</p>
+            <p className="text-xs text-ink-muted">Review it, sign it off and merge it on GitHub. Opificia notices when it is merged or closed.</p>
+          </div>
+          <a href={url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-ink shadow-sm hover:opacity-90">
+            <GitPullRequest className="h-4 w-4" aria-hidden />
+            Review on GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RunPage() {
   const { runId } = useParams({ from: "/runs/$runId" });
   const queryClient = useQueryClient();
@@ -292,6 +313,8 @@ export function RunPage() {
           onApprove={() => command.mutate({ path: "approve" })}
           onRequestChanges={(feedback) => command.mutate({ path: "request-changes", body: { feedback } })}
         />
+      ) : r.state === "pr_opened" && r.prState === "open" && r.prUrl ? (
+        <PullRequestBar url={r.prUrl} />
       ) : (
         <div className="h-10" aria-hidden />
       )}

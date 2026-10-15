@@ -10,7 +10,7 @@ import { z } from "zod";
 import { useNow } from "./hooks.ts";
 import { api, authClient } from "./lib.ts";
 import { DONE_PAGE, groupRuns, repositories, shortAge } from "./run-list.ts";
-import { STATE_META, TONE_CLASSES } from "./status.ts";
+import { TONE_CLASSES, runMeta } from "./status.ts";
 import { ErrorText, Kbd, Mark, StatusDot, ThemeSwitch } from "./ui.tsx";
 
 export function useRuns() {
@@ -22,7 +22,7 @@ export function useRuns() {
 }
 
 function RunRow({ run, current, now }: { run: RunSummary; current: boolean; now: number }) {
-  const meta = STATE_META[run.state];
+  const meta = runMeta(run.state, run.prState);
   return (
     <Link
       to="/runs/$runId"
@@ -35,7 +35,7 @@ function RunRow({ run, current, now }: { run: RunSummary; current: boolean; now:
     >
       {current && <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-ink" aria-hidden />}
       <span className="flex items-center gap-2">
-        <StatusDot state={run.state} />
+        <StatusDot state={run.state} prState={run.prState} />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{run.issueTitle}</span>
         <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">{shortAge(run.updatedAt, now)}</span>
       </span>

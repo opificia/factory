@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Injectable, NotFoundException } from "@nestjs/common";
-import type { RunEventBody, RunState } from "@opificia/contracts";
+import type { PrState, RunEventBody, RunState } from "@opificia/contracts";
 import type { Run } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma.service.js";
 import { Notifier } from "./notifier.service.js";
@@ -25,6 +25,7 @@ export function toSnapshot(run: Run): RunSnapshot {
     headSha: run.headSha,
     prUrl: run.prUrl,
     prNumber: run.prNumber,
+    prState: run.prState as PrState | null,
     costUsd: run.costUsd,
     budgetUsd: run.budgetUsd,
     deadlineAt: run.deadlineAt.toISOString(),
@@ -48,6 +49,7 @@ function projection(run: RunSnapshot, orgId: string, lastSeq: number) {
     headSha: run.headSha,
     prUrl: run.prUrl,
     prNumber: run.prNumber,
+    prState: run.prState,
     costUsd: run.costUsd,
     budgetUsd: run.budgetUsd,
     deadlineAt: new Date(run.deadlineAt),

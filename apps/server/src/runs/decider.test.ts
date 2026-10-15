@@ -86,6 +86,49 @@ describe("decider", () => {
     ]);
   });
 
+  it("follows the pull request until a person merges or closes it", () => {
+    const opened: Command[] = [
+      ...planned,
+      { type: "ApprovePlan", by: "u1", deadlineAt: "2026-10-15T13:00:00.000Z" },
+      { type: "StartStage", stage: "implement", sessionId: "s2", baseSha: "abc" },
+      {
+        type: "CompleteStage",
+        stage: "implement",
+        sessionId: "s2",
+        result: { outcome: "implementation_ready", summary: "Done", bundle: "result.bundle", headSha: "f".repeat(40), costUsd: 2 },
+      },
+      { type: "RecordChecks", passed: true, findings: [], files: 2, additions: 10, deletions: 1 },
+      { type: "RecordPullRequest", url: "https://github.com/opificia/playground/pull/8", number: 8 },
+    ];
+    expect(play(opened).state.prState).toBe("open");
+
+    const unchanged = play([...opened, { type: "RecordPullRequestState", state: "open", mergedBy: null }]);
+    expect(unchanged.events.at(-1)!.type).toBe("pr.opened");
+
+    const closed = play([
+      ...opened,
+      { type: "RecordPullRequestState", state: "closed", mergedBy: null },
+      { type: "RecordPullRequestState", state: "open", mergedBy: null },
+      { type: "RecordPullRequestState", state: "merged", mergedBy: "ana" },
+    ]);
+    expect(closed.events.slice(-3)).toEqual([
+      { type: "pr.closed", data: {} },
+      { type: "pr.reopened", data: {} },
+      { type: "pr.merged", data: { by: "ana" } },
+    ]);
+    expect(closed.state.prState).toBe("merged");
+    expect(closed.state.state).toBe("pr_opened");
+    expect(react(closed.events.at(-1)!, closed.state)).toEqual([]);
+
+    // A merge is final.
+    expect(decide(closed.state, { type: "RecordPullRequestState", state: "closed", mergedBy: null })).toEqual([]);
+  });
+
+  it("records the state of a pull request only after one was opened", () => {
+    const { state } = play(planned);
+    expect(() => decide(state, { type: "RecordPullRequestState", state: "merged", mergedBy: null })).toThrow(DomainError);
+  });
+
   it("plans again with the reviewer's feedback", () => {
     const { state, events } = play([...planned, { type: "RequestChanges", by: "u1", feedback: "Add tests", deadlineAt: "2026-10-15T13:00:00.000Z" }]);
     expect(state.state).toBe("queued");
