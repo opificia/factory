@@ -109,6 +109,10 @@ Each run has a budget of 15 USD and 60 minutes of agent time; the time spent wai
 
 If any check fails, the run fails and nothing is pushed.
 
+## See the web app without a server
+
+`pnpm --filter @opificia/web dev:fixtures` starts the web app on <http://localhost:5174> with recorded runs in every state, and no server, database or GitHub App. `pnpm --filter @opificia/web screenshot` takes screenshots of every state, in light and dark ([ADR-0009](adr/0009-let-agents-see-the-web-app.md)). The sandbox image contains Chromium, so agents can do the same when they change the web app.
+
 ## Where data lives
 
 - PostgreSQL holds accounts, organisations, runs and their events.

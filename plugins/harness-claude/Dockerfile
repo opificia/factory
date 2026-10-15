@@ -23,8 +23,10 @@ RUN pnpm --filter "@opificia/harness-claude..." build
 
 # node 24.22.0, Debian bookworm slim
 FROM node@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+# Chromium from Debian, so an agent can screenshot a web app it changes and
+# look at the result (ADR-0009). It only ever loads pages on localhost.
 RUN apt-get update \
-  && apt-get install --yes --no-install-recommends git ca-certificates \
+  && apt-get install --yes --no-install-recommends git ca-certificates chromium fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
 # pnpm for repositories that use it. With network level "registries" or
 # "open", the agent installs dependencies through the egress proxy (ADR-0007).
@@ -37,7 +39,8 @@ ENV HOME=/home/node \
     CLAUDE_CONFIG_DIR=/home/node/.claude \
     OPIFICIA_IN_DIR=/in \
     OPIFICIA_OUT_DIR=/out \
-    OPIFICIA_WORK_DIR=/work
+    OPIFICIA_WORK_DIR=/work \
+    OPIFICIA_CHROMIUM=/usr/bin/chromium
 USER node
 WORKDIR /work
 ENTRYPOINT ["node", "/app/plugins/harness-claude/dist/main.js"]

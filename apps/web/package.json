@@ -9,7 +9,9 @@
     "build": "tsc -p tsconfig.json && vite build",
     "typecheck": "tsc -p tsconfig.json",
     "dev": "vite",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "dev:fixtures": "OPIFICIA_FIXTURES=1 vite",
+    "screenshot": "node scripts/screenshot.ts"
   },
   "dependencies": {
     "@opificia/contracts": "workspace:*",
@@ -27,6 +29,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "playwright-core": "1.64.1",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.4"
   }
