@@ -89,22 +89,22 @@ We recommend that you set up two things once, in your clone of the repository:
 
 ```sh
 cp .githooks/pre-push .git/hooks/pre-push
-git config alias.signoff '!f() { git rebase --quiet --signoff --force-rebase "$(git merge-base HEAD "${1:-origin/main}")"; }; f'
+git config alias.signoff '!f() { git fetch --quiet origin && git rebase --quiet --signoff --force-rebase "$(git merge-base HEAD "${1:-origin/main}")"; }; f'
 ```
 
-- The `pre-push` hook runs the same check as CI. If a commit lacks your sign-off, git refuses the push and lists the commit, so the problem never reaches a pull request.
-- `git signoff` signs off every commit on your branch since it left `main`. Use `git signoff <branch>` if you started from another branch.
+- The `pre-push` hook runs the same check as CI. If a commit lacks your sign-off, git refuses the push and lists the commit, so the problem never reaches a pull request. If a maintainer signs off your pull request with `/signoff` instead (see [Sign off by approval](#sign-off-by-approval)), run `git config opificia.signoff approval`: the hook then lists unsigned commits but lets the push through.
+- `git signoff` fetches `origin`, then signs off every commit on your branch since it left `main`. Use `git signoff <branch>` if you started from another branch. The fetch matters: with an old `origin/main`, the rebase would also copy commits that are already on `main`.
 
 We copy the hook into `.git/hooks` instead of pointing git at `.githooks`. That way, a branch you check out cannot change which hook runs on your machine. Copy the hook again when it changes.
 
-If an AI agent writes commits for you, it never signs them off (see [AI-assisted contributions](#ai-assisted-contributions)). Review the commits, then run `git signoff` and push.
+If an AI agent writes commits for you, it never signs them off (see [AI-assisted contributions](#ai-assisted-contributions)). Review the commits, then run `git signoff` and push. If you are a maintainer, you can instead let the agent push and open the pull request, and sign off by approval.
 
 ### Sign off by approval
 
 Maintainers can sign off without a terminal ([ADR-0006](docs/adr/0006-sign-off-by-approval.md)). This is how changes written by the Opificia bot or by an agent get their sign-off:
 
 1. Review the pull request on GitHub.
-2. Approve it, with a line that reads `/signoff` in the review.
+2. Approve it, with a line that reads `/signoff` in the review. A plain comment does not count: it must be an approving review.
 3. The `Sign-off` workflow adds your `Signed-off-by` line to the commits, using the name and email address in [`MAINTAINERS.md`](MAINTAINERS.md), and pushes them. The DCO check runs again.
 
 By writing `/signoff`, you certify the Developer Certificate of Origin for those commits, exactly as with `git commit -s`. The workflow refuses, and changes nothing, when:
@@ -115,7 +115,7 @@ By writing `/signoff`, you certify the Developer Certificate of Origin for those
 - the pull request does not go into the default branch, or branch rules apply to its head branch, because the bot rewrites that branch; or
 - the branch changes `.github/workflows/`, which the bot may not push. Sign off in a terminal instead.
 
-It works only for branches in this repository, not for forks. The workflow needs a GitHub App that is installed only on this repository, with "Contents: read and write" and nothing else. Its ID goes in the repository variable `OPIFICIA_BOT_APP_ID`, and its private key in the secret `OPIFICIA_BOT_PRIVATE_KEY`.
+GitHub does not let you approve your own pull request, so this works for pull requests that a bot or another person opened. An agent that works for you should open its pull requests as a GitHub App, such as the factory's App. It works only for branches in this repository, not for forks. The workflow needs a GitHub App that is installed only on this repository, with "Contents: read and write" and nothing else. Its ID goes in the repository variable `OPIFICIA_BOT_APP_ID`, and its private key in the secret `OPIFICIA_BOT_PRIVATE_KEY`.
 
 ### How to fix a missing sign-off
 
