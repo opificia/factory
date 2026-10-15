@@ -1,9 +1,10 @@
 # lychee link checker configuration. See https://lychee.cli.rs.
 
-# Retry flaky hosts a few times before failing.
-max_retries = 3
-retry_wait_time = 5
-timeout = 30
+# Retry flaky hosts before failing, but not for long: one slow host sets the
+# time of the whole check.
+max_retries = 2
+retry_wait_time = 3
+timeout = 20
 
 # Accept rate limiting as "not broken".
 accept = ["200..=299", "429"]
