@@ -136,6 +136,8 @@ The built-in list holds package registries and download-only hosts, such as GitH
 
 The run timeline shows the first decision for each host. Every connection is logged in `.data/runs/<run>/<session>/egress.log`. The planning stage never has network access.
 
+Entries in `OPIFICIA_EGRESS_ALLOW` are host names, without a scheme, port or wildcard, such as `example.org`. A leading dot, as in `.example.org`, includes subdomains. The server refuses to start when an entry is not a host name.
+
 To let Opificia work on its own repository, add `binaries.prisma.sh` to `OPIFICIA_EGRESS_ALLOW`. Prisma downloads its engines from there while it installs, and the build fails without them.
 
 The decision model for unknown hosts and the button to allow a host for a repository come later. Until then, a host that is not on the list is refused; add it to `OPIFICIA_EGRESS_ALLOW` if you trust it.

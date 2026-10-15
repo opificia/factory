@@ -5,6 +5,28 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { NetworkLevel } from "@opificia/contracts";
 import { z } from "zod";
+import { normalizeHost } from "./sandbox/egress-policy.js";
+
+/** A comma-separated list of host names, each with an optional leading dot. */
+export const EgressAllow = z
+  .string()
+  .default("")
+  .transform((v, ctx) => {
+    const hosts: string[] = [];
+    for (const entry of v.split(",").map((e) => e.trim()).filter(Boolean)) {
+      const dot = entry.startsWith(".") ? "." : "";
+      const host = normalizeHost(entry.slice(dot.length));
+      if (host === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: `"${entry}" is not a host name. Use a host name without a scheme, port or wildcard, such as "example.org", or ".example.org" to include subdomains.`,
+        });
+      } else {
+        hosts.push(dot + host);
+      }
+    }
+    return ctx.issues.length > 0 ? z.NEVER : hosts;
+  });
 
 const Env = z.object({
   DATABASE_URL: z.string().min(1),
@@ -43,10 +65,7 @@ const Env = z.object({
    */
   OPIFICIA_SANDBOX_NETWORK: NetworkLevel.default("registries"),
   /** Hosts allowed on top of the built-in list, comma-separated. ".example.org" includes subdomains. */
-  OPIFICIA_EGRESS_ALLOW: z
-    .string()
-    .default("")
-    .transform((v) => v.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)),
+  OPIFICIA_EGRESS_ALLOW: EgressAllow,
   /** "closed" stops new sign-ups once the operator has an account. */
   OPIFICIA_SIGNUP: z.enum(["open", "closed"]).default("open"),
   OPIFICIA_GIT_AUTHOR_NAME: z.string().default("Opificia"),
