@@ -29,6 +29,8 @@ const DROP_RESPONSE_HEADERS = new Set(["content-encoding", "content-length", "tr
 /** An egress connection with no traffic for this long is closed. */
 const EGRESS_IDLE_MS = 5 * 60 * 1000;
 const EGRESS_CONNECT_TIMEOUT_MS = 15_000;
+/** How long a new connection waits for a free one when too many are open. */
+const EGRESS_SLOT_WAIT_MS = 30_000;
 const EGRESS_LOOKUP_TIMEOUT_MS = 5_000;
 
 /** Resolves a host name, or gives up after a few seconds. */
@@ -117,10 +119,18 @@ export class SandboxGateway implements OnModuleDestroy {
       return refuse(403, `${host}:${port} refused: ${decision.reason}`);
     }
 
-    const slot = access.budget.openConnection();
+    // Over the limit of open connections, wait for one to close rather than
+    // refuse: a refusal makes package managers retry or fail.
+    const gaveUp = new AbortController();
+    client.once("close", () => gaveUp.abort());
+    const slot = await access.budget.waitForConnection(EGRESS_SLOT_WAIT_MS, gaveUp.signal);
     if (!slot.ok) {
       await this.sessions.recordEgress(sessionId, { host, port, allowed: false, reason: slot.reason });
       return refuse(403, `${host}:${port} refused: ${slot.reason}`);
+    }
+    if (client.destroyed) {
+      access.budget.closeConnection();
+      return;
     }
     let released = false;
     const release = () => {

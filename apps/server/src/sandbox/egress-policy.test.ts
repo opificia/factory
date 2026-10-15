@@ -122,4 +122,36 @@ describe("EgressBudget", () => {
     expect(budget.addSent(30, 30)).toBeUndefined();
     expect(budget.addSent(20, 50)).toBe("the session sent more than 150 bytes");
   });
+
+  it("lets a new connection wait for a free one instead of refusing it", async () => {
+    const budget = new EgressBudget({ ...limits, maxTotal: 10 });
+    budget.openConnection();
+    budget.openConnection();
+    const waiting = budget.waitForConnection(1000);
+    setTimeout(() => budget.closeConnection(), 10);
+    expect(await waiting).toEqual({ ok: true });
+  });
+
+  it("gives up when no connection closes in time, or when the wait is cancelled", async () => {
+    const budget = new EgressBudget({ ...limits, maxTotal: 10 });
+    budget.openConnection();
+    budget.openConnection();
+    expect(await budget.waitForConnection(20)).toMatchObject({ ok: false, reason: "the session has 2 connections open and none closed within 0 s" });
+    const cancel = new AbortController();
+    const waiting = budget.waitForConnection(1000, cancel.signal);
+    cancel.abort();
+    expect(await waiting).toMatchObject({ ok: false });
+    // A cancelled wait does not take the next free connection.
+    budget.closeConnection();
+    expect(budget.openConnection().ok).toBe(true);
+  });
+
+  it("does not wait when the session has used all its connections", async () => {
+    const budget = new EgressBudget(limits);
+    for (let i = 0; i < 3; i++) {
+      budget.openConnection();
+      budget.closeConnection();
+    }
+    expect(await budget.waitForConnection(1000)).toMatchObject({ ok: false, reason: "the session has used its 3 connections" });
+  });
 });
