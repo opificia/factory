@@ -7,12 +7,12 @@
 #   Link check         links in Markdown files (.lychee.toml). Links inside the
 #                      repository always; external links only in changed files on
 #                      pull requests, and in every file on main and weekly
-#   DCO sign-off       every commit has a Signed-off-by line (pull requests only);
-#                      a bot's commits may carry a maintainer's instead (ADR-0006)
 #   Pull request title Conventional Commits, since squash merges use the title
 #
 # Scorecard, Labels and Website stay in their own workflows: they run on other
-# triggers and need write permissions or secrets that these checks do not.
+# triggers and need write permissions or secrets that these checks do not. The
+# DCO sign-off check is in dco.yml, which runs from the default branch so that
+# a pull request cannot change it.
 name: Checks
 
 on:
@@ -106,55 +106,6 @@ jobs:
           fail: true
           jobSummary: true
           format: markdown
-
-  dco:
-    name: DCO sign-off
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check every commit for a sign-off
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # Run the check as the base branch has it, so a pull request cannot
-          # change the check that judges it.
-          if git cat-file -e "${BASE_SHA}:.github/scripts/dco-check.sh" 2>/dev/null; then
-            scripts="$RUNNER_TEMP/dco-scripts"
-            mkdir -p "$scripts"
-            for f in dco-check.sh maintainers.sh signoff-reviews.sh; do
-              git show "${BASE_SHA}:.github/scripts/$f" > "$scripts/$f"
-            done
-            chmod +x "$scripts"/*.sh
-            exec "$scripts/dco-check.sh"
-          fi
-          # A base branch without the script gets the strict check: every
-          # commit, merges included, needs its author's own sign-off.
-          missing=0
-          for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
-            author_email="$(git show -s --format='%ae' "$sha")"
-            signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
-            if grep -qiF "<${author_email}>" <<< "$signoffs"; then
-              echo "ok      $(git show -s --format='%h %s' "$sha")"
-            else
-              echo "missing $(git show -s --format='%h %s' "$sha")"
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            echo
-            echo "Some commits lack a Signed-off-by line matching the commit author's email."
-            echo "See CONTRIBUTING.md, section 'How to fix a missing sign-off'."
-            exit 1
-          fi
 
   pr-title:
     name: Pull request title
