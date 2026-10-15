@@ -3,7 +3,7 @@
 
 import { useState, type FormEvent } from "react";
 import { authClient } from "../lib.ts";
-import { Button, Card, ErrorText, Input } from "../ui.tsx";
+import { Button, Card, ErrorText, Input, Mark } from "../ui.tsx";
 
 export function SignInPage() {
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
@@ -26,8 +26,11 @@ export function SignInPage() {
   }
 
   return (
-    <div className="mx-auto mt-24 max-w-sm space-y-6">
-      <h1 className="text-center text-2xl font-semibold text-brand">Opificia</h1>
+    <div className="mx-auto mt-24 max-w-sm space-y-6 px-6">
+      <h1 className="flex flex-col items-center gap-3 text-center text-2xl font-semibold tracking-tight">
+        <Mark size={40} />
+        Opificia
+      </h1>
       <Card title={mode === "sign-in" ? "Sign in" : "Create an account"}>
         <form className="space-y-3" onSubmit={submit}>
           {mode === "sign-up" && <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required />}
@@ -45,7 +48,7 @@ export function SignInPage() {
             {mode === "sign-in" ? "Sign in" : "Create account"}
           </Button>
         </form>
-        <div className="my-4 border-t border-slate-200" />
+        <div className="my-4 border-t border-line" />
         <Button
           variant="secondary"
           className="w-full"
@@ -53,9 +56,9 @@ export function SignInPage() {
         >
           Continue with GitHub
         </Button>
-        <p className="mt-4 text-center text-sm text-slate-600">
+        <p className="mt-4 text-center text-sm text-ink-muted">
           {mode === "sign-in" ? "No account yet? " : "Already have an account? "}
-          <button className="text-brand underline" onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}>
+          <button className="text-ink underline" onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}>
             {mode === "sign-in" ? "Create one" : "Sign in"}
           </button>
         </p>
@@ -93,7 +96,7 @@ export function OnboardingPage() {
 
   return (
     <div className="mx-auto mt-24 max-w-md space-y-6">
-      <h1 className="text-center text-2xl font-semibold text-brand">Welcome to Opificia</h1>
+      <h1 className="text-center text-2xl font-semibold text-ink">Welcome to Opificia</h1>
       {organizations.data && organizations.data.length > 0 && (
         <Card title="Choose an organisation">
           <ul className="space-y-2">
@@ -108,7 +111,7 @@ export function OnboardingPage() {
         </Card>
       )}
       <Card title="Create an organisation">
-        <p className="mb-3 text-sm text-slate-600">An organisation holds your repositories, runs and members.</p>
+        <p className="mb-3 text-sm text-ink-muted">An organisation holds your repositories, runs and members.</p>
         <form className="space-y-3" onSubmit={create}>
           <Input placeholder="Organisation name" value={name} onChange={(e) => setName(e.target.value)} required />
           <ErrorText error={error} />
