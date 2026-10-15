@@ -110,7 +110,7 @@ Maintainers can sign off without a terminal ([ADR-0006](docs/adr/0006-sign-off-b
 By writing `/signoff`, you certify the Developer Certificate of Origin for those commits, exactly as with `git commit -s`. The workflow refuses, and changes nothing, when:
 
 - your approval is not on the current head of the branch, because someone pushed after your review;
-- a commit is by someone other than the bot or you, because that person must sign off themselves;
+- a commit is by someone other than you or the bot that opened the pull request, because that person must sign off themselves. An author email alone proves nothing, so a commit counts as the bot's only when GitHub names that bot as the author of the pull request;
 - the branch contains merge commits;
 - the pull request does not go into the default branch, or branch rules apply to its head branch, because the bot rewrites that branch; or
 - the branch changes `.github/workflows/`, which the bot may not push. Sign off in a terminal instead.

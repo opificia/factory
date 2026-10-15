@@ -18,7 +18,6 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-bot_email_pattern='^[0-9]+\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$'
 
 die() { echo "::error::$*" >&2; exit 1; }
 note() { echo "::notice::$*"; }
@@ -85,11 +84,15 @@ find_review() {
   output branch "$branch"
   output base "$base"
   output number "$(jq -r .number <<< "$pr")"
+  # The bot that opened the pull request, if a bot did. Only its commits may
+  # receive a maintainer's sign-off, apart from the maintainer's own.
+  output bot_email "$(jq -r 'select(.user.type == "Bot") | "\(.user.id)+\(.user.login)@users.noreply.github.com" | ascii_downcase' <<< "$pr")"
 }
 
 # --- apply ------------------------------------------------------------------
-# Needs LOGIN, BRANCH, BASE, HEAD_SHA, MAINTAINERS_FILE and PUSH_URL. Runs in a
-# clone where the branch and the base can be fetched from "origin".
+# Needs LOGIN, BRANCH, BASE, HEAD_SHA, MAINTAINERS_FILE and PUSH_URL, and
+# BOT_EMAIL when a bot opened the pull request. Runs in a clone where the
+# branch and the base can be fetched from "origin".
 apply() {
   local name email base_sha new_head
   : "${LOGIN:?}" "${BRANCH:?}" "${BASE:?}" "${HEAD_SHA:?}" "${MAINTAINERS_FILE:?}" "${PUSH_URL:?}"
@@ -107,15 +110,18 @@ apply() {
     die "The branch changes workflows, which the bot may not push. Sign off in a terminal: git signoff && git push --force-with-lease"
   fi
 
-  # Only commits by the bot or by the approving maintainer may receive this
-  # maintainer's sign-off. Anyone else certifies their own commits.
-  local sha author signoffs pending=0
+  # Only commits by the bot that opened the pull request or by the approving
+  # maintainer may receive this maintainer's sign-off. Anyone else certifies
+  # their own commits. An author email alone proves nothing, so a bot email
+  # counts only when that bot is the author of the pull request.
+  local sha author signoffs pending=0 lower
   for sha in $(git rev-list "$base_sha..HEAD"); do
     author="$(git show -s --format='%ae' "$sha")"
     signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
     grep -qiF "<$author>" <<< "$signoffs" && continue
     grep -qiF "<$email>" <<< "$signoffs" && continue
-    if grep -qE "$bot_email_pattern" <<< "$author" || [ "$(tr "[:upper:]" "[:lower:]" <<< "$author")" = "$(tr "[:upper:]" "[:lower:]" <<< "$email")" ]; then
+    lower="$(tr '[:upper:]' '[:lower:]' <<< "$author")"
+    if { [ -n "${BOT_EMAIL:-}" ] && [ "$lower" = "$BOT_EMAIL" ]; } || [ "$lower" = "$(tr '[:upper:]' '[:lower:]' <<< "$email")" ]; then
       pending=1
     else
       die "Commit $(git show -s --format='%h' "$sha") is by $author, who must sign it off themselves."
