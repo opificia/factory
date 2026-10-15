@@ -10,7 +10,7 @@
  */
 
 import { join } from "node:path";
-import type { RunnerCompleteParams, RunnerTask } from "@opificia/contracts";
+import { conventionalTitle, type RunnerCompleteParams, type RunnerTask } from "@opificia/contracts";
 import {
   bundleBranch,
   commitAll,
@@ -21,7 +21,7 @@ import {
   type HarnessContext,
 } from "@opificia/runner";
 import { READ_ONLY_TOOLS, WRITE_TOOLS, runTurn } from "./claude.js";
-import { REVIEW_PROMPT, implementPrompt, planPrompt } from "./prompts.js";
+import { REVIEW_PROMPT, implementPrompt, planPrompt, splitTitle } from "./prompts.js";
 
 const NAME = "claude";
 const VERSION = "0.0.0";
@@ -37,6 +37,7 @@ async function plan(task: RunnerTask, repoDir: string, context: HarnessContext):
     maxTurns: task.maxTurns,
     maxBudgetUsd: task.maxBudgetUsd,
     protectedPaths: task.protectedPaths,
+    network: task.network,
     emit: context.emit,
     signal: context.signal,
   });
@@ -53,6 +54,7 @@ async function implement(task: RunnerTask, repoDir: string, context: HarnessCont
     tools: WRITE_TOOLS,
     maxTurns: task.maxTurns,
     protectedPaths: task.protectedPaths,
+    network: task.network,
     emit: context.emit,
     signal: context.signal,
   };
@@ -71,13 +73,12 @@ async function implement(task: RunnerTask, repoDir: string, context: HarnessCont
     if (review.ok && review.text.trim()) summary = review.text.trim();
   }
 
-  const message = [
-    `${task.issue.title} (#${task.issue.number})`,
-    "",
-    `Implements ${task.issue.url}.`,
-    "",
-    ...task.commit.trailers,
-  ].join("\n");
+  // The title becomes the commit subject, and the control plane uses the
+  // subject as the pull request title.
+  const reply = splitTitle(summary);
+  summary = reply.description;
+  const title = conventionalTitle(reply.title, task.issue.title);
+  const message = [title, "", `Implements #${task.issue.number}.`, "", ...task.commit.trailers].join("\n");
   await commitAll(repoDir, message);
   if ((await commitCount(repoDir, task.repo.baseSha)) === 0) {
     return { outcome: "failed", error: "the agent made no changes", costUsd };

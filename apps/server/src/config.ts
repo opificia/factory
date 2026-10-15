@@ -3,6 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { NetworkLevel } from "@opificia/contracts";
 import { z } from "zod";
 
 const Env = z.object({
@@ -36,6 +37,16 @@ const Env = z.object({
   OPIFICIA_MAX_TURNS: z.coerce.number().int().positive().default(80),
   /** Model requests one sandbox stage may make through the proxy. */
   OPIFICIA_MAX_MODEL_REQUESTS: z.coerce.number().int().positive().default(400),
+  /**
+   * What the implementation stage may reach on the network (ADR-0007). The
+   * planning stage never has network access.
+   */
+  OPIFICIA_SANDBOX_NETWORK: NetworkLevel.default("registries"),
+  /** Hosts allowed on top of the built-in list, comma-separated. ".example.org" includes subdomains. */
+  OPIFICIA_EGRESS_ALLOW: z
+    .string()
+    .default("")
+    .transform((v) => v.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)),
   /** "closed" stops new sign-ups once the operator has an account. */
   OPIFICIA_SIGNUP: z.enum(["open", "closed"]).default("open"),
   OPIFICIA_GIT_AUTHOR_NAME: z.string().default("Opificia"),

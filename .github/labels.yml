@@ -67,3 +67,6 @@
 - name: "ai-assisted"
   color: "EEF1F7"
   description: "Contains meaningful AI-assisted work, disclosed with Assisted-by"
+- name: "opificia"
+  color: "2B3A8F"
+  description: "Opificia works on this issue; a maintainer adds it"

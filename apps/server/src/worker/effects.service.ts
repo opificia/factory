@@ -4,11 +4,11 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { DEFAULT_PROTECTED_PATHS, RunEventBody, type RunnerTask, type Stage } from "@opificia/contracts";
+import { DEFAULT_PROTECTED_PATHS, RunEventBody, conventionalTitle, type RunnerTask, type Stage } from "@opificia/contracts";
 import { DEFAULT_LIMITS, checkChange } from "../checks/checker.js";
 import { CONFIG, type Config } from "../config.js";
 import type { Run } from "../generated/prisma/client.js";
-import { bundleForSandbox, loadResult, pushBranch, updateCache } from "../github/git.js";
+import { bundleForSandbox, git, loadResult, pushBranch, updateCache } from "../github/git.js";
 import { GitHubService } from "../github/github.service.js";
 import { PrismaService } from "../prisma.service.js";
 import { DomainError, type Effect, type Revision } from "../runs/decider.js";
@@ -106,6 +106,7 @@ export class EffectsService {
       maxBudgetUsd: Math.round(remaining * 100) / 100,
       maxTurns: this.config.OPIFICIA_MAX_TURNS,
       protectedPaths: [...DEFAULT_PROTECTED_PATHS],
+      network: stage === "implement" ? this.config.OPIFICIA_SANDBOX_NETWORK : "none",
       commit: {
         authorName: this.config.OPIFICIA_GIT_AUTHOR_NAME,
         authorEmail: this.config.OPIFICIA_GIT_AUTHOR_EMAIL,
@@ -237,8 +238,11 @@ export class EffectsService {
       `Run: ${this.webUrl(run.id)}`,
     ].join("\n");
 
+    // The agent's commit subject is the title, if it follows Conventional
+    // Commits; the pull request title check in CI needs that.
+    const subject = await git(checkDir, ["log", "-1", "--format=%s", run.headSha]).catch(() => "");
     const pr = await this.github.openPullRequest(installationId, run.repo, {
-      title: run.issueTitle,
+      title: conventionalTitle(subject, run.issueTitle),
       body,
       head: run.branch,
       base: defaultBranch,

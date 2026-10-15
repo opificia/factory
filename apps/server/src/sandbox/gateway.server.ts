@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { lookup } from "node:dns/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { connect, type Socket } from "node:net";
+import type { Duplex } from "node:stream";
 import { Inject, Injectable, Logger, type OnModuleDestroy } from "@nestjs/common";
 import { WebSocketServer } from "ws";
 import { CONFIG, type Config } from "../config.js";
+import { decideHost, isPublicAddress } from "./egress-policy.js";
 import { SessionsService } from "./sessions.service.js";
 
 /** Model API paths a sandbox may call. Everything else is refused. */
@@ -22,6 +26,9 @@ const DROP_REQUEST_HEADERS = new Set([
   "proxy-authorization",
 ]);
 const DROP_RESPONSE_HEADERS = new Set(["content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"]);
+/** An egress connection with no traffic for this long is closed. */
+const EGRESS_IDLE_MS = 5 * 60 * 1000;
+const EGRESS_CONNECT_TIMEOUT_MS = 15_000;
 
 /**
  * The server sandboxes talk to, on its own port, apart from the API that
@@ -29,7 +36,10 @@ const DROP_RESPONSE_HEADERS = new Set(["content-encoding", "content-length", "tr
  *
  * - `/runner`: the runner protocol, over a WebSocket;
  * - `/model/<session>/...`: a pass-through proxy to the model API that adds
- *   the operator's API key. The key never enters a sandbox.
+ *   the operator's API key. The key never enters a sandbox;
+ * - `CONNECT host:443`: the egress proxy (ADR-0007). It applies the network
+ *   policy of the session, refuses hosts that resolve to non-public addresses,
+ *   and does not decrypt HTTPS.
  */
 @Injectable()
 export class SandboxGateway implements OnModuleDestroy {
@@ -52,6 +62,12 @@ export class SandboxGateway implements OnModuleDestroy {
         res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: "upstream request failed" } }));
       });
     });
+    this.server.on("connect", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+      this.handleConnect(req, socket as Socket, head).catch((error: Error) => {
+        this.logger.warn(`egress proxy: ${error.message}`);
+        socket.destroy();
+      });
+    });
     this.server.on("upgrade", (req, socket, head) => {
       if (req.url !== "/runner") {
         socket.destroy();
@@ -68,6 +84,75 @@ export class SandboxGateway implements OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     this.wss.close();
     await new Promise((resolve) => (this.server ? this.server.close(resolve) : resolve(null)));
+  }
+
+  private async handleConnect(req: IncomingMessage, client: Socket, head: Buffer): Promise<void> {
+    const refuse = (status: 403 | 407 | 502 | 504, text: string) => {
+      const reason = { 403: "Forbidden", 407: "Proxy Authentication Required", 502: "Bad Gateway", 504: "Gateway Timeout" }[status];
+      client.end(`HTTP/1.1 ${status} ${reason}\r\ncontent-type: text/plain\r\nconnection: close\r\n\r\nOpificia egress proxy: ${text}\n`);
+    };
+    const credentials = /^Basic\s+(.+)$/i.exec(req.headers["proxy-authorization"] ?? "")?.[1];
+    const [sessionId = "", token = ""] = credentials ? Buffer.from(credentials, "base64").toString("utf8").split(":") : [];
+    const access = this.sessions.authorizeEgress(sessionId, token);
+    if (!access) return refuse(407, "unknown sandbox session");
+
+    const target = /^([^:\s]+|\[[0-9a-fA-F:.]+\]):(\d{1,5})$/.exec(req.url ?? "");
+    const host = (target?.[1] ?? "").toLowerCase();
+    const port = Number(target?.[2] ?? 0);
+    const decision = decideHost({ host, port, level: access.network, extraHosts: this.config.OPIFICIA_EGRESS_ALLOW });
+    if (!decision.allowed) {
+      await this.sessions.recordEgress(sessionId, { host, port, allowed: false, reason: decision.reason });
+      return refuse(403, `${host}:${port} refused: ${decision.reason}`);
+    }
+
+    // Resolve here and connect to the address we checked, so a second lookup
+    // cannot point the connection somewhere else.
+    const addresses = await lookup(host, { all: true }).catch(() => []);
+    if (addresses.length === 0 || !addresses.every((a) => isPublicAddress(a.address))) {
+      const reason = addresses.length === 0 ? "the host name does not resolve" : "the host resolves to a non-public address";
+      await this.sessions.recordEgress(sessionId, { host, port, allowed: false, reason });
+      return refuse(403, `${host}:${port} refused: ${reason}`);
+    }
+    await this.sessions.recordEgress(sessionId, { host, port, allowed: true, reason: decision.reason });
+
+    const upstream = connect({ host: addresses[0]!.address, port, timeout: EGRESS_CONNECT_TIMEOUT_MS });
+    let sent = head.length;
+    let received = 0;
+    let connected = false;
+    upstream.once("connect", () => {
+      connected = true;
+      upstream.setTimeout(EGRESS_IDLE_MS);
+      client.setTimeout(EGRESS_IDLE_MS);
+      client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head.length > 0) upstream.write(head);
+      client.on("data", (chunk: Buffer) => (sent += chunk.length));
+      upstream.on("data", (chunk: Buffer) => (received += chunk.length));
+      client.pipe(upstream).pipe(client);
+    });
+    const close = () => {
+      upstream.destroy();
+      client.destroy();
+    };
+    upstream.on("timeout", () => {
+      if (connected) return close();
+      refuse(504, `${host}:${port} did not answer in time`);
+      upstream.destroy();
+    });
+    client.on("timeout", close);
+    upstream.on("error", () => {
+      if (!connected) {
+        refuse(502, `${host}:${port} could not be reached`);
+        upstream.destroy();
+        return;
+      }
+      close();
+    });
+    client.on("error", close);
+    upstream.once("close", () => {
+      if (!connected) return;
+      client.destroy();
+      void this.sessions.recordEgress(sessionId, { host, port, allowed: true, reason: "closed", sent, received });
+    });
   }
 
   private async handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {

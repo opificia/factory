@@ -49,6 +49,7 @@ Area labels say which part of the project is affected. There can be more than on
 | `security` | Security hardening that can be discussed in public. Vulnerabilities are never handled in public issues; see [`SECURITY.md`](../../SECURITY.md). |
 | `sovereignty` | Affects a commitment in [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md). Needs extra care in review. |
 | `ai-assisted` | The pull request contains meaningful AI-assisted work, disclosed with an `Assisted-by` trailer. For transparency, not a judgement. |
+| `opificia` | Opificia works on this issue: it plans, waits for a maintainer to approve the plan, and opens a pull request. Only maintainers add it, because the issue text reaches the agent. |
 
 ## The triage routine
 
