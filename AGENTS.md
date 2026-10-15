@@ -52,6 +52,20 @@ pnpm test        # Vitest
 
 Keep the run lifecycle in `apps/server/src/runs/decider.ts` pure, and test it there. Change the database only through a Prisma migration (`pnpm db:migrate`). The runner protocol in `sdk/contracts` is version 0 and unstable; change the server and the harness together.
 
+## Checking changes to the web app
+
+Tests and the typecheck do not show how a page looks. When you change `apps/web`, look at the result before you hand it over ([ADR-0009](docs/adr/0009-let-agents-see-the-web-app.md)):
+
+```sh
+pnpm --filter @opificia/contracts build
+pnpm --filter @opificia/web screenshot                   # every state, light and dark, and 400px wide
+pnpm --filter @opificia/web screenshot /runs/<id> /      # only these pages
+```
+
+The command runs the web app in fixture mode (`apps/web/fixtures`), with recorded runs in every state and no server, and prints the paths of the screenshots. Open the ones your change affects and look at them: layout, spacing, light and dark, and narrow screens. Fix what looks wrong and take them again. Say in your summary which screenshots you checked. If your change needs a state the fixtures do not have, add a scenario to `apps/web/fixtures/plugin.ts`.
+
+Follow the look that is there: the colour tokens in `apps/web/src/styles.css` (navy and slate; gold only for what needs a person; colour only for attention, work in progress and failure), the components in `apps/web/src/ui.tsx`, and icons from `lucide-react`.
+
 ## Running the hygiene checks locally
 
 The CI checks are repository hygiene only. You can run them with these tools:

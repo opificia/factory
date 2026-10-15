@@ -30,3 +30,6 @@ apps/server/src/generated/
 
 # Local run data: repository caches, run files and bundles
 .data/
+
+# Screenshots of the web app (pnpm --filter @opificia/web screenshot)
+apps/web/screenshots/

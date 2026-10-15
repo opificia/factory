@@ -35,7 +35,7 @@ function RunCard({ run, now }: { run: RunSummary; now: number }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{run.issueTitle}</span>
         <span className="block truncate text-xs text-ink-faint">
-          {run.repo}#{run.issueNumber} · <span className={TONE_CLASSES[meta.tone].text}>{meta.label}</span> · {shortAge(run.updatedAt, now)} ago
+          {run.repo}#{run.issueNumber} · <span className={TONE_CLASSES[meta.tone].text}>{meta.label}</span> · {shortAge(run.updatedAt, now) === "now" ? "just now" : `${shortAge(run.updatedAt, now)} ago`}
         </span>
       </span>
       {run.prState === "merged" ? (
