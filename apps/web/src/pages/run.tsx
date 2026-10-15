@@ -115,10 +115,25 @@ function Budget({ run }: { run: RunDetail }) {
   );
 }
 
+/** Tells the page how tall the sticky header is, so rows pinned below it line up. */
+function useHeaderHeight() {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = ref.current;
+    const main = document.getElementById("main");
+    if (!header || !main) return;
+    const observer = new ResizeObserver(() => main.style.setProperty("--run-header", `${header.offsetHeight}px`));
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+  return ref;
+}
+
 function Header({ run, events, onCancel, cancelling }: { run: RunDetail; events: RunEventDto[]; onCancel: () => void; cancelling: boolean }) {
   const active = !TERMINAL_STATES.includes(run.state);
+  const ref = useHeaderHeight();
   return (
-    <header className="z-10 border-b border-line bg-canvas/85 backdrop-blur md:sticky md:top-0">
+    <header ref={ref} className="z-10 border-b border-line bg-canvas/85 backdrop-blur md:sticky md:top-0">
       <div className="mx-auto max-w-3xl px-6 pt-5 pb-4">
         <div className="flex items-center gap-2 text-xs text-ink-faint">
           <a href={`https://github.com/${run.repo}`} target="_blank" rel="noreferrer" className="hover:text-ink">

@@ -17,7 +17,7 @@ import {
   SquareTerminal,
   Wrench,
 } from "lucide-react";
-import { Suspense, lazy, useState, type ReactNode } from "react";
+import { Suspense, lazy, useRef, useState, type ReactNode } from "react";
 import { clock, usd, when } from "../format.ts";
 import { useNow } from "../hooks.ts";
 import {
@@ -31,8 +31,9 @@ import {
   stageCalls,
   stageDuration,
   summarise,
-  visibleItems,
+  splitStage,
 } from "../timeline.ts";
+import { Collapse } from "../ui.tsx";
 
 // The Markdown renderer is large, so it loads only on the run page.
 const Markdown = lazy(() => import("../markdown.tsx").then((m) => ({ default: m.Markdown })));
@@ -68,16 +69,28 @@ function ToolLine({ call, live = false }: { call: RunEventDto; live?: boolean })
   );
 }
 
+/** A chevron in a fixed 20px box, so rows and the guide lines below them line up. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <span className="grid h-5 w-5 shrink-0 place-items-center" aria-hidden>
+      <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-300 motion-reduce:transition-none ${open ? "rotate-90" : ""}`} />
+    </span>
+  );
+}
+
 function WorkGroup({ item, open, onToggle }: { item: Extract<Item, { kind: "tools" }>; open: boolean; onToggle: () => void }) {
   const kinds = [...new Set(item.calls.map((c) => (c.type === "agent.tool" ? kindOf(c.data.tool) : "other")))].slice(0, 3);
+  const id = `work-${item.id}`;
   return (
-    <div className="py-1">
+    <div className="group/tools py-0.5">
       <button
         type="button"
         aria-expanded={open}
+        aria-controls={id}
         onClick={onToggle}
-        className="group flex items-center gap-2 rounded-md py-0.5 text-[13px] text-ink-muted hover:text-ink"
+        className="flex w-full items-center gap-2 rounded-md py-1 pr-2 text-left text-[13px] text-ink-muted hover:bg-sunken/70 hover:text-ink"
       >
+        <Chevron open={open} />
         <span className="flex -space-x-1" aria-hidden>
           {kinds.map((k) => {
             const Icon = KIND_ICON[k];
@@ -88,21 +101,19 @@ function WorkGroup({ item, open, onToggle }: { item: Extract<Item, { kind: "tool
             );
           })}
         </span>
-        {item.summary}
-        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+        <span className="min-w-0 truncate">{item.summary}</span>
       </button>
-      {open ? (
-        <ul className="mt-1 ml-2.5 border-l border-line pl-4">
+      <Collapse open={open} id={id}>
+        <ul className="mt-0.5 mb-1 ml-[9px] border-l border-line-strong py-0.5 pl-[19px] transition-colors group-hover/tools:border-ink-faint">
           {item.calls.map((call) => (
             <ToolLine key={call.seq} call={call} />
           ))}
         </ul>
-      ) : (
-        item.last && (
-          <ul className="mt-0.5 ml-2.5 border-l border-line pl-4">
-            <ToolLine call={item.last} live />
-          </ul>
-        )
+      </Collapse>
+      {!open && item.last && (
+        <ul className="ml-[9px] border-l border-line-strong pl-[19px]">
+          <ToolLine call={item.last} live />
+        </ul>
       )}
     </div>
   );
@@ -338,78 +349,117 @@ function EventView({ event, plans, awaitingApproval }: { event: RunEventDto; pla
   }
 }
 
-function LiveLine({ stage }: { stage: Stage }) {
-  const now = useNow(1000);
-  return (
-    <div className="flex items-center gap-2 py-2 text-[13px] text-run" role="status">
-      <span className="relative flex h-2 w-2" aria-hidden>
-        <span className="absolute inset-0 animate-ping rounded-full bg-run opacity-60 motion-reduce:hidden" />
-        <span className="relative h-2 w-2 rounded-full bg-run" />
-      </span>
-      <span className="font-medium">Working for {clock(now - Date.parse(stage.startedAt))}</span>
-    </div>
-  );
+/** "2m 21s", or a live clock while the stage runs. */
+function StageClock({ stage }: { stage: Stage }) {
+  const now = useNow(stage.status === "running" ? 1000 : 3_600_000);
+  return <>{stage.status === "running" ? clock(now - Date.parse(stage.startedAt)) : formatDuration(stageDuration(stage))}</>;
+}
+
+/** Hosts the policy refused, not connections the limit refused for a moment. */
+function blockedHosts(work: Item[]): number {
+  return work.filter((i) => i.kind === "refused" && i.event.type === "agent.tool" && !/connections open/.test(i.event.data.summary)).length;
 }
 
 function StageBlock({
   stage,
+  choices,
+  choose,
   opened,
   toggle,
   plans,
   awaitingApproval,
 }: {
   stage: Stage;
+  choices: ReadonlyMap<string, boolean>;
+  choose: (id: string, open: boolean) => void;
   opened: ReadonlySet<string>;
   toggle: (id: string) => void;
   plans: RunEventDto[];
   awaitingApproval: boolean;
 }) {
-  const open = isOpen(stage, opened);
+  const open = isOpen(stage, choices);
+  const { work, after } = splitStage(stage);
   const calls = stageCalls(stage);
-  const items = visibleItems(stage, open);
+  const blocked = blockedHosts(work);
+  const running = stage.status === "running";
+  const row = useRef<HTMLButtonElement>(null);
+  const id = `stage-${stage.id}`;
+
+  const collapse = () => {
+    choose(stage.id, false);
+    row.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
 
   return (
-    <section className="relative">
-      <div className="flex items-center gap-3 pt-4 pb-1">
+    <section>
+      <div className="flex items-center gap-3 pt-5 pb-1">
         <span className="text-[11px] font-semibold tracking-[0.08em] text-ink-faint uppercase">{stage.name}</span>
         <span className="h-px flex-1 bg-line" aria-hidden />
         {stage.status === "failed" && <span className="text-[11px] font-medium text-bad">failed</span>}
-        <span className="text-[11px] text-ink-faint tabular-nums">{formatDuration(stageDuration(stage))}</span>
       </div>
 
-      {!open && calls.length > 0 && (
-        <button
-          type="button"
-          onClick={() => toggle(stage.id)}
-          aria-expanded={false}
-          className="flex items-center gap-2 py-1 text-[13px] text-ink-faint hover:text-ink"
-        >
-          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-          Worked for {formatDuration(stageDuration(stage))}: {summarise(calls).replace(/^./, (c) => c.toLowerCase())}
-        </button>
-      )}
-      {open && stage.status === "finished" && calls.length > 0 && (
-        <button
-          type="button"
-          onClick={() => toggle(stage.id)}
-          aria-expanded
-          className="flex items-center gap-2 py-1 text-[13px] text-ink-faint hover:text-ink"
-        >
-          <ChevronRight className="h-3.5 w-3.5 rotate-90" aria-hidden />
-          Hide the work
-        </button>
+      {work.length > 0 && (
+        <div className="group/stage">
+          <button
+            ref={row}
+            type="button"
+            aria-expanded={open}
+            aria-controls={id}
+            onClick={() => choose(stage.id, !open)}
+            className={`-mx-2 flex w-[calc(100%+1rem)] items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-sunken ${
+              open ? "sticky top-0 z-[2] bg-canvas/95 shadow-[0_1px_0_var(--line)] backdrop-blur md:top-[var(--run-header,0px)]" : ""
+            } ${running ? "text-run" : "text-ink-muted hover:text-ink"}`}
+          >
+            <Chevron open={open} />
+            {running && (
+              <span className="relative -ml-1 flex h-2 w-2" aria-hidden>
+                <span className="absolute inset-0 animate-ping rounded-full bg-run opacity-60 motion-reduce:hidden" />
+                <span className="relative h-2 w-2 rounded-full bg-run" />
+              </span>
+            )}
+            <span className="font-medium">
+              {running ? "Working for " : "Worked for "}
+              <span className="tabular-nums">
+                <StageClock stage={stage} />
+              </span>
+            </span>
+            {calls.length > 0 && <span className="min-w-0 truncate text-ink-faint">· {summarise(calls).replace(/^./, (c) => c.toLowerCase())}</span>}
+            {blocked > 0 && (
+              <span className="ml-auto shrink-0 rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold-ink">
+                {blocked} blocked {blocked === 1 ? "host" : "hosts"}
+              </span>
+            )}
+          </button>
+
+          <Collapse open={open} id={id}>
+            <div className="mt-1 ml-[9px] border-l-2 border-line-strong pl-[17px] transition-colors group-hover/stage:border-ink-faint">
+              {work.map((item) => {
+                if (item.kind === "tools") return <WorkGroup key={item.id} item={item} open={opened.has(item.id)} onToggle={() => toggle(item.id)} />;
+                if (item.kind === "refused") return <RefusedNote key={item.event.seq} event={item.event} />;
+                return <EventView key={item.event.seq} event={item.event} plans={plans} awaitingApproval={awaitingApproval} />;
+              })}
+              {running ? (
+                <p className="py-2 text-[13px]">
+                  <span className="shimmer">Working…</span>
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={collapse}
+                  className="my-1 -ml-1 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-ink-faint hover:bg-sunken hover:text-ink"
+                >
+                  <ChevronRight className="h-3.5 w-3.5 -rotate-90" aria-hidden />
+                  Collapse
+                </button>
+              )}
+            </div>
+          </Collapse>
+        </div>
       )}
 
-      {items.map((item) => {
-        if (item.kind === "tools") return <WorkGroup key={item.id} item={item} open={opened.has(item.id)} onToggle={() => toggle(item.id)} />;
-        if (item.kind === "refused" && item.event.type === "agent.tool")
-          return <RefusedNote key={item.event.seq} event={item.event} />;
-        if (item.kind === "event")
-          return <EventView key={item.event.seq} event={item.event} plans={plans} awaitingApproval={awaitingApproval} />;
-        return null;
-      })}
-
-      {stage.status === "running" && <LiveLine stage={stage} />}
+      {after.map((event) => (
+        <EventView key={event.seq} event={event} plans={plans} awaitingApproval={awaitingApproval} />
+      ))}
     </section>
   );
 }
@@ -443,6 +493,9 @@ export function Conversation({
   events: RunEventDto[];
   stages: Stage[];
 }) {
+  // Stages: what the person chose; tool groups: which ones are open.
+  const [choices, setChoices] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const choose = (id: string, open: boolean) => setChoices((current) => new Map(current).set(id, open));
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const toggle = (id: string) =>
     setOpened((current) => {
@@ -457,11 +510,13 @@ export function Conversation({
     <div>
       <IssueMessage run={run} at={queued?.at} />
       {events.length <= 1 && <Note icon={<span className="h-2 w-2 animate-pulse rounded-full bg-run" />}>Waiting for a sandbox…</Note>}
-      <div className="space-y-2">
+      <div>
         {stages.map((stage) => (
           <StageBlock
             key={stage.id}
             stage={stage}
+            choices={choices}
+            choose={choose}
             opened={opened}
             toggle={toggle}
             plans={plans}

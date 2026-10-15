@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { RunState } from "@opificia/contracts";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
+import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import mark from "../../../brand/opificia-mark.svg";
 import markReverse from "../../../brand/opificia-mark-reverse.svg";
 import { Monitor, Moon, Sun } from "lucide-react";
@@ -146,6 +146,27 @@ export function ThemeSwitch({ labels = false }: { labels?: boolean }) {
           {labels ? label : <span className="sr-only">{label}</span>}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Shows or hides its children with a short height and fade animation, so the
+ * content around it moves smoothly rather than jumping. The children mount the
+ * first time it opens and stay mounted, so closing animates too.
+ */
+export function Collapse({ open, children, id }: { open: boolean; children: ReactNode; id?: string }) {
+  const [ever, setEver] = useState(open);
+  if (open && !ever) setEver(true);
+  return (
+    <div
+      id={id}
+      inert={!open}
+      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none ${
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+      }`}
+    >
+      <div className="min-h-0 overflow-hidden">{ever && children}</div>
     </div>
   );
 }

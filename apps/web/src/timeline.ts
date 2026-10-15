@@ -253,18 +253,23 @@ export function buildTimeline(events: RunEventDto[], options: { active: boolean 
   return { before, stages };
 }
 
-const seqOf = (item: Item): number => (item.kind === "tools" ? item.calls[0]!.seq : item.event.seq);
-
-/** The items a stage shows. A folded stage shows its outcome, pinned events and refused hosts. */
-export function visibleItems(stage: Stage, open: boolean): Item[] {
-  const items = open
-    ? stage.items
-    : stage.items.filter((i) => i.kind === "refused" || (i.kind === "event" && pinned(i.event)));
-  if (!stage.outcome) return items;
-  return [...items, { kind: "event" as const, event: stage.outcome }].sort((a, b) => seqOf(a) - seqOf(b));
+/**
+ * A stage in two parts. `work` is what folds: the agent's messages, its tool
+ * calls and refused hosts. `after` stays in view: the outcome (the plan, the
+ * summary or the failure) and the events a person must see, in order.
+ */
+export function splitStage(stage: Stage): { work: Item[]; after: RunEventDto[] } {
+  const work = stage.items.filter((i) => !(i.kind === "event" && pinned(i.event)));
+  const after = stage.items.flatMap((i) => (i.kind === "event" && pinned(i.event) ? [i.event] : []));
+  if (stage.outcome) after.push(stage.outcome);
+  after.sort((a, b) => a.seq - b.seq);
+  return { work, after };
 }
 
-/** Running and failed stages are always open. */
-export function isOpen(stage: Stage, opened: ReadonlySet<string>): boolean {
-  return stage.status !== "finished" || opened.has(stage.id);
+/**
+ * Whether a stage's work is unfolded. A person's choice wins; otherwise a
+ * running or failed stage is open and a finished one folded.
+ */
+export function isOpen(stage: Stage, choices: ReadonlyMap<string, boolean>): boolean {
+  return choices.get(stage.id) ?? stage.status !== "finished";
 }

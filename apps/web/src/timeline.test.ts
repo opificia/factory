@@ -3,7 +3,7 @@
 
 import type { RunEventDto } from "@opificia/contracts";
 import { describe, expect, it } from "vitest";
-import { buildTimeline, formatDuration, isOpen, kindOf, outcomeText, pinned, repoPaths, stageCalls, stageDuration, summarise, visibleItems } from "./timeline.ts";
+import { buildTimeline, formatDuration, isOpen, kindOf, outcomeText, pinned, repoPaths, stageCalls, stageDuration, summarise, splitStage } from "./timeline.ts";
 
 let seq = 0;
 const at = (s: number) => new Date(Date.UTC(2026, 0, 1, 12, 0, s)).toISOString();
@@ -78,26 +78,27 @@ describe("buildTimeline", () => {
     const { stages } = buildTimeline([started(1, "implement"), tool(2, "Read"), failed(30, "out of budget")], { active: false });
     const stage = stages[0]!;
     expect(stage.status).toBe("failed");
-    expect(isOpen(stage, new Set())).toBe(true);
-    const shown = visibleItems(stage, true);
-    const last = shown[shown.length - 1]!;
-    expect(last.kind === "event" && last.event.type === "run.failed" && last.event.data.reason).toBe("out of budget");
+    expect(isOpen(stage, new Map())).toBe(true);
+    expect(isOpen(stage, new Map([[stage.id, false]]))).toBe(false);
+    const last = splitStage(stage).after.at(-1)!;
+    expect(last.type === "run.failed" && last.data.reason).toBe("out of budget");
   });
 
   it("marks a stage running only while the run is active", () => {
     const events = [started(1, "implement"), tool(2, "Read"), tool(3, "Bash")];
     const running = buildTimeline(events, { active: true }).stages[0]!;
     expect(running.status).toBe("running");
-    expect(isOpen(running, new Set())).toBe(true);
+    expect(isOpen(running, new Map())).toBe(true);
     const item = running.items[0]!;
     expect(item.kind === "tools" && item.last?.seq).toBe(events[2]!.seq);
     const done = buildTimeline(events, { active: false }).stages[0]!;
     expect(done.status).toBe("finished");
-    expect(isOpen(done, new Set())).toBe(false);
+    expect(isOpen(done, new Map())).toBe(false);
+    expect(isOpen(done, new Map([[done.id, true]]))).toBe(true);
     expect(done.items[0]!.kind === "tools" && (done.items[0] as { last?: unknown }).last).toBeFalsy();
   });
 
-  it("shows a refused network decision as its own row, even when folded", () => {
+  it("shows a refused network decision as its own row in the work", () => {
     const events = [
       started(1, "implement"),
       tool(2, "Read"),
@@ -110,12 +111,14 @@ describe("buildTimeline", () => {
     expect(stage.items.map((i) => i.kind)).toEqual(["tools", "refused", "tools"]);
     const first = stage.items[0]!;
     expect(first.kind === "tools" && first.calls).toHaveLength(2);
-    expect(visibleItems(stage, false).map((i) => i.kind)).toEqual(["refused", "event"]);
+    const { work, after } = splitStage(stage);
+    expect(work.map((i) => i.kind)).toEqual(["tools", "refused", "tools"]);
+    expect(after.map((e) => e.type)).toEqual(["implementation.finished"]);
   });
 
   it("never folds the pinned events", () => {
     const { stages } = buildTimeline(fullRun(), { active: false });
-    const types = stages.flatMap((s) => visibleItems(s, false)).flatMap((i) => (i.kind === "event" ? [i.event.type] : []));
+    const types = stages.flatMap((s) => splitStage(s).after).map((e) => e.type);
     expect(types).toEqual(["plan.proposed", "plan.approved", "implementation.finished", "checks.completed", "pr.opened"]);
     for (const e of [approved(1), checks(1), failed(1), make(1, "run.cancelled", { by: "ana" }), make(1, "plan.changes_requested", { by: "a", feedback: "f" })]) {
       expect(pinned(e)).toBe(true);
