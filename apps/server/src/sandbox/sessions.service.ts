@@ -139,12 +139,15 @@ export class SessionsService {
     this.logger.log(`run ${session.runId}: started ${session.stage} sandbox ${containerId.slice(0, 12)}`);
 
     const helloTimer = setTimeout(() => {
-      void this.prisma.sandboxSession.findUnique({ where: { id: sessionId } }).then(async (s) => {
-        if (s?.status === "starting") {
-          this.logger.warn(`session ${sessionId} did not connect in time`);
-          await this.docker.stop(containerId);
-        }
-      });
+      void this.prisma.sandboxSession
+        .findUnique({ where: { id: sessionId } })
+        .then(async (s) => {
+          if (s?.status === "starting") {
+            this.logger.warn(`session ${sessionId} did not connect in time`);
+            await this.docker.stop(containerId);
+          }
+        })
+        .catch((error: Error) => this.logger.error(`checking session ${sessionId}: ${error.message}`));
     }, HELLO_TIMEOUT_MS);
 
     void this.docker
@@ -320,7 +323,7 @@ export class SessionsService {
         });
         this.active.delete(s.sessionId);
         if (updated.count > 0) await this.fail(s.orgId, s.runId, "the sandbox disconnected before it finished", s.stage, s.sessionId);
-      })();
+      })().catch((e: Error) => this.logger.error(`closing session ${s.sessionId}: ${e.message}`));
     });
   }
 

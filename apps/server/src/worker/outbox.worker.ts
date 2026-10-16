@@ -37,8 +37,12 @@ export class OutboxWorker implements OnApplicationShutdown {
     this.running = true;
     this.events.signals.on("effects", () => this.wake?.());
     this.loops = Array.from({ length: CONCURRENCY }, () => this.loop());
-    this.sweepTimer = setInterval(() => void this.sweepDeadlines(), DEADLINE_SWEEP_MS);
-    void this.sweepDeadlines();
+    // Like the claim loop, the sweep logs a failure and tries again later, so
+    // the server outlives a database that is briefly unavailable.
+    const sweep = () =>
+      void this.sweepDeadlines().catch((error: Error) => this.logger.error(`checking deadlines: ${error.message}`));
+    this.sweepTimer = setInterval(sweep, DEADLINE_SWEEP_MS);
+    sweep();
   }
 
   async onApplicationShutdown(): Promise<void> {
