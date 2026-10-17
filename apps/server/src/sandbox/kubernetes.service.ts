@@ -10,15 +10,17 @@ import type { SandboxBackend, SandboxSpec } from "./backend.js";
 import { KubeApi, KubeApiError } from "./kube-api.js";
 
 const POLL_MS = 5000;
-/** How long the network probe may take, including pulling its image. */
-const PROBE_TIMEOUT_MS = 5 * 60 * 1000;
+/** How long the network probe may take, including a new sandbox node and pulling its image. */
+const PROBE_TIMEOUT_MS = 15 * 60 * 1000;
+/** Addresses a sandbox must not reach directly: public hosts and the cloud metadata service. */
+const PROBE_TARGETS = ["1.1.1.1:443", "8.8.8.8:53", "9.9.9.9:443", "169.254.169.254:80"];
 /** Exit code reported for a pod that is gone or was stopped before its container ended. */
 const GONE_EXIT_CODE = 137;
 
 const LABELS = { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" };
 
 type Pod = {
-  metadata: { name: string; labels?: Record<string, string> };
+  metadata: { name: string; uid?: string; labels?: Record<string, string> };
   status?: {
     phase?: string;
     reason?: string;
@@ -80,7 +82,11 @@ function basePod(input: {
   };
 }
 
-/** The pod for one stage of a run. */
+/**
+ * The pod for one stage of a run. Its environment holds the session's tokens,
+ * so it comes from a secret of the same name, not from the pod spec, which
+ * anyone who may read pods can see.
+ */
 export function sandboxPod(spec: SandboxSpec, options: { gatewayIp: string; settings: SandboxPodSettings; deadlineSeconds: number }) {
   const pod = basePod({
     name: `opificia-run-${spec.sessionId}`,
@@ -90,7 +96,7 @@ export function sandboxPod(spec: SandboxSpec, options: { gatewayIp: string; sett
   });
   const { cpu, memory, workSize } = options.settings;
   Object.assign(pod.spec.containers[0]!, {
-    env: Object.entries(spec.env).map(([name, value]) => ({ name, value })),
+    envFrom: [{ secretRef: { name: pod.metadata.name } }],
     resources: { requests: { cpu, memory }, limits: { cpu, memory } },
     volumeMounts: [
       { name: "work", mountPath: "/work" },
@@ -108,33 +114,56 @@ export function sandboxPod(spec: SandboxSpec, options: { gatewayIp: string; sett
   return pod;
 }
 
+/** The secret with a sandbox's environment. It belongs to the pod, so Kubernetes deletes it with the pod. */
+export function sandboxSecret(pod: { metadata: { name: string; labels: Record<string, string> } }, uid: string, env: Record<string, string>) {
+  return {
+    apiVersion: "v1",
+    kind: "Secret",
+    type: "Opaque",
+    metadata: {
+      name: pod.metadata.name,
+      labels: pod.metadata.labels,
+      ownerReferences: [{ apiVersion: "v1", kind: "Pod", name: pod.metadata.name, uid }],
+    },
+    stringData: env,
+  };
+}
+
 /**
- * Tries to reach the internet without the egress proxy, with the labels of a
- * sandbox, so the sandbox network policy applies. Exits with 0 when every
- * attempt fails, and with 1 when one gets through.
+ * Runs like a sandbox, on a sandbox node with the sandbox labels, so the
+ * sandbox network policy applies as it would to a run. It must reach the
+ * gateway, and nothing else directly: not the internet, not the cloud
+ * metadata service and not the Kubernetes API. Exits with 0 when that holds,
+ * 1 when it reached something it should not, and 2 when it cannot reach the
+ * gateway.
  */
 const PROBE = `
 const net = require("node:net");
-const targets = [["1.1.1.1", 443], ["8.8.8.8", 53], ["9.9.9.9", 443]];
-const attempt = ([host, port]) => new Promise((done) => {
-  const socket = net.connect({ host, port, timeout: 5000 });
-  socket.once("connect", () => { socket.destroy(); done(host + ":" + port); });
-  socket.once("timeout", () => { socket.destroy(); done(null); });
-  socket.once("error", () => done(null));
+const attempt = (target) => new Promise((done) => {
+  const i = target.lastIndexOf(":");
+  const socket = net.connect({ host: target.slice(0, i).replace(/^\\[|\\]$/g, ""), port: Number(target.slice(i + 1)), timeout: 5000 });
+  socket.once("connect", () => { socket.destroy(); done(true); });
+  socket.once("timeout", () => { socket.destroy(); done(false); });
+  socket.once("error", () => done(false));
 });
-Promise.all(targets.map(attempt)).then((reached) => {
-  const open = reached.filter(Boolean);
-  console.log(open.length ? "reached " + open.join(", ") : "no direct route out");
-  process.exit(open.length ? 1 : 0);
+const targets = JSON.parse(process.env.PROBE_TARGETS);
+Promise.all([attempt(process.env.PROBE_GATEWAY), ...targets.map(attempt)]).then(([gateway, ...reached]) => {
+  const open = targets.filter((_, i) => reached[i]);
+  if (open.length) { console.log("reached " + open.join(", ")); process.exit(1); }
+  if (!gateway) { console.log("could not reach the gateway at " + process.env.PROBE_GATEWAY); process.exit(2); }
+  console.log("reached the gateway and nothing else");
+  process.exit(0);
 });
 `;
 
-export function probePod(options: { name: string; image: string; gatewayIp: string; settings: SandboxPodSettings }) {
-  // The probe needs no sandbox node: the policy follows the labels.
-  const settings = { ...options.settings, nodeSelector: {}, tolerations: [] };
-  const pod = basePod({ ...options, settings, labels: { "opificia.probe": "network" }, deadlineSeconds: PROBE_TIMEOUT_MS / 1000 });
+export function probePod(options: { name: string; image: string; gatewayIp: string; gatewayPort: number; targets: string[]; settings: SandboxPodSettings }) {
+  const pod = basePod({ ...options, labels: { "opificia.probe": "network" }, deadlineSeconds: PROBE_TIMEOUT_MS / 1000 });
   Object.assign(pod.spec.containers[0]!, {
     command: ["node", "-e", PROBE],
+    env: [
+      { name: "PROBE_GATEWAY", value: `gateway:${options.gatewayPort}` },
+      { name: "PROBE_TARGETS", value: JSON.stringify(options.targets) },
+    ],
     resources: { requests: { cpu: "50m", memory: "64Mi" }, limits: { cpu: "200m", memory: "128Mi" } },
   });
   return pod;
@@ -190,12 +219,17 @@ export class KubernetesService implements SandboxBackend {
   }
 
   private async probeNetwork(): Promise<void> {
+    const api = process.env.KUBERNETES_SERVICE_HOST;
+    const targets = [...PROBE_TARGETS, ...(api ? [`${api}:${process.env.KUBERNETES_SERVICE_PORT ?? "443"}`] : [])];
     const pod = probePod({
       name: `opificia-network-probe-${randomBytes(4).toString("hex")}`,
       image: this.config.OPIFICIA_KUBERNETES_PROBE_IMAGE ?? this.config.OPIFICIA_SANDBOX_IMAGE,
       gatewayIp: this.gateway!.ip,
+      gatewayPort: this.gateway!.port,
+      targets,
       settings: this.config.OPIFICIA_KUBERNETES_SANDBOX_POD,
     });
+    this.logger.log(`checking the sandbox network with ${pod.metadata.name}; on a new sandbox node this takes a few minutes`);
     await this.api.json("POST", this.path("pods"), pod);
     const name = pod.metadata.name;
     try {
@@ -207,14 +241,16 @@ export class KubernetesService implements SandboxBackend {
         code = exitCodeOf(await this.api.json<Pod>("GET", this.path(`pods/${name}`)));
       }
       const log = (await this.api.text(this.path(`pods/${name}/log`)).catch(() => "")).trim();
+      if (code === 2) {
+        throw new Error(`a sandbox cannot reach the worker (${log}). Check the sandbox NetworkPolicy and the service ${this.config.OPIFICIA_KUBERNETES_GATEWAY_SERVICE}.`);
+      }
       if (code !== 0) {
         throw new Error(
-          `a pod with the sandbox labels can reach the internet directly (${log || `exit code ${code}`}). ` +
-            "The cluster does not enforce the sandbox NetworkPolicy, so sandboxes would bypass the egress proxy. " +
-            "Use a network plugin that enforces network policies, such as Cilium or Calico.",
+          `a sandbox can reach addresses directly that it must reach only through the egress proxy, or not at all (${log || `exit code ${code}`}). ` +
+            "The cluster does not enforce the sandbox NetworkPolicy. Use a network plugin that enforces network policies, such as Cilium or Calico.",
         );
       }
-      this.logger.log(`network probe: ${log || "no direct route out"}`);
+      this.logger.log(`network probe: ${log}`);
     } finally {
       await this.remove(name);
     }
@@ -227,7 +263,15 @@ export class KubernetesService implements SandboxBackend {
       settings: this.config.OPIFICIA_KUBERNETES_SANDBOX_POD,
       deadlineSeconds: Math.ceil(this.config.OPIFICIA_RUN_TIMEOUT_MINUTES * 60),
     });
-    await this.api.json("POST", this.path("pods"), pod);
+    const created = await this.api.json<Pod>("POST", this.path("pods"), pod);
+    // The pod waits for its secret; the secret needs the pod's ID to belong to it.
+    try {
+      if (!created?.metadata?.uid) throw new Error("the API server returned no ID for the pod");
+      await this.api.json("POST", this.path("secrets"), sandboxSecret(pod, created.metadata.uid, spec.env));
+    } catch (error) {
+      await this.remove(pod.metadata.name);
+      throw error;
+    }
     return pod.metadata.name;
   }
 
