@@ -30,7 +30,7 @@ An RFC is open for comments for at least **14 days**. After that, the maintainer
 
 **Before version 1.0.0.** Until version 1.0.0 is released, the project changes too fast, and too few people follow it, for a 14-day comment period on every significant change. Until then:
 
-- significant technical changes, such as new components, new runtime dependencies and changes to public interfaces, are decided by an ADR in a pull request, by lazy consensus, without an RFC;
+- significant technical changes, such as new components, new runtime dependencies and changes to public interfaces, are decided by an ADR in a pull request, by lazy consensus, without an RFC. This includes changes that affect a commitment in [`SOVEREIGNTY.md`](SOVEREIGNTY.md) without weakening it. The ADR states the impact on each commitment;
 - changes to policy files (see below), and adding, removing or weakening a commitment in [`SOVEREIGNTY.md`](SOVEREIGNTY.md), still need an RFC;
 - any maintainer can ask for an RFC when a change is contested, and anyone may write one.
 
