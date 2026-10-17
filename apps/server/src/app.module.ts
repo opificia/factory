@@ -12,8 +12,10 @@ import { PrismaService } from "./prisma.service.js";
 import { EventStore } from "./runs/event-store.service.js";
 import { Notifier } from "./runs/notifier.service.js";
 import { RunsController } from "./runs/runs.controller.js";
+import { SANDBOX_BACKEND } from "./sandbox/backend.js";
 import { DockerService } from "./sandbox/docker.service.js";
 import { SandboxGateway } from "./sandbox/gateway.server.js";
+import { KubernetesService } from "./sandbox/kubernetes.service.js";
 import { SessionsService } from "./sandbox/sessions.service.js";
 import { EffectsService } from "./worker/effects.service.js";
 import { OutboxWorker } from "./worker/outbox.worker.js";
@@ -48,7 +50,10 @@ export class AppModule {
       },
       SessionGuard,
     ];
-    if (worker) providers.push(DockerService, SessionsService, SandboxGateway, EffectsService, OutboxWorker, PollerService);
+    if (worker) {
+      const backend = config.OPIFICIA_SANDBOX_BACKEND === "kubernetes" ? KubernetesService : DockerService;
+      providers.push({ provide: SANDBOX_BACKEND, useClass: backend }, SessionsService, SandboxGateway, EffectsService, OutboxWorker, PollerService);
+    }
     return {
       module: AppModule,
       controllers: api ? [HealthController, RunsController, GitHubController] : [],

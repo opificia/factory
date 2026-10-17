@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { DEFAULT_PROTECTED_PATHS, RunEventBody, conventionalTitle, type RunnerTask, type Stage } from "@opificia/contracts";
 import { DEFAULT_LIMITS, checkChange } from "../checks/checker.js";
+import { Deferred } from "../common/deferred.js";
 import { CONFIG, type Config } from "../config.js";
 import type { Run } from "../generated/prisma/client.js";
 import { bundleForSandbox, git, loadResult, pushBranch, updateCache } from "../github/git.js";
@@ -13,12 +15,13 @@ import { GitHubService } from "../github/github.service.js";
 import { PrismaService } from "../prisma.service.js";
 import { DomainError, type Effect, type Revision } from "../runs/decider.js";
 import { EventStore } from "../runs/event-store.service.js";
-import { SessionsService } from "../sandbox/sessions.service.js";
+import { SessionsService, WAIT_FOR_ROOM_MS } from "../sandbox/sessions.service.js";
 
 /** Below this remaining budget, a run does not start another stage. */
 const MIN_STAGE_BUDGET_USD = 0.5;
 
 export type StoredEffect = { id: bigint; orgId: string; runId: string; type: string; payload: unknown };
+
 
 /**
  * Performs the side effects that run events ask for. Each handler checks the
@@ -80,6 +83,12 @@ export class EffectsService {
       return;
     }
 
+    // A quick look first, to spare GitHub while every sandbox is busy. The
+    // session itself is admitted under a lock (SessionsService.create).
+    if (await this.sessions.full(this.config.OPIFICIA_MAX_SANDBOXES)) {
+      throw new Deferred(`all ${this.config.OPIFICIA_MAX_SANDBOXES} sandboxes are busy`, WAIT_FOR_ROOM_MS);
+    }
+
     const installationId = Number(run.installationId);
     const token = await this.github.repoToken(installationId, run.repo, false);
     const { defaultBranch } = await this.github.getRepo(installationId, run.repo);
@@ -90,7 +99,7 @@ export class EffectsService {
     const issue = await this.github.getIssue(installationId, run.repo, run.issueNumber);
 
     const sessionId = randomUUID();
-    const { inDir } = await this.sessions.makeDirs(run.id, sessionId);
+    const { inDir, base } = await this.sessions.makeDirs(run.id, sessionId);
     await bundleForSandbox(cacheDir, defaultBranch, baseSha, join(inDir, "repo.bundle"));
 
     const model = stage === "plan" ? this.config.OPIFICIA_PLAN_MODEL : this.config.OPIFICIA_IMPLEMENT_MODEL;
@@ -113,7 +122,13 @@ export class EffectsService {
         trailers: [`Assisted-by: Claude Code/${model}`, `Opificia-Run: ${run.id}`],
       },
     };
-    const sandboxToken = await this.sessions.create({ sessionId, orgId: run.orgId, runId: run.id, stage, task });
+    let sandboxToken: string;
+    try {
+      sandboxToken = await this.sessions.create({ sessionId, orgId: run.orgId, runId: run.id, stage, task, limit: this.config.OPIFICIA_MAX_SANDBOXES });
+    } catch (error) {
+      await rm(base, { recursive: true, force: true });
+      throw error;
+    }
 
     try {
       await this.events.dispatch(run.orgId, run.id, { type: "StartStage", stage, sessionId, baseSha });

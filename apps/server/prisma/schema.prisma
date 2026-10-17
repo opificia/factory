@@ -246,5 +246,7 @@ model SandboxSession {
 
   @@index([runId])
   @@index([status])
+  /// The sandbox cap counts sessions whose sandbox is not gone yet.
+  @@index([endedAt])
   @@map("sandbox_sessions")
 }

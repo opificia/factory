@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execFile } from "node:child_process";
+import { rm } from "node:fs/promises";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -39,11 +40,16 @@ export type WorkspaceOptions = {
   authorEmail: string;
 };
 
-/** Clones the repository from the bundle and creates the work branch. */
+/**
+ * Clones the repository from the bundle and creates the work branch. The
+ * bundle is removed afterwards: the clone holds everything in it, and the
+ * workspace has limited room.
+ */
 export async function prepareWorkspace(options: WorkspaceOptions): Promise<void> {
   await run("git", ["clone", "--quiet", "--branch", options.defaultBranch, options.bundlePath, options.dir], {
     env: isolatedGitEnv(),
   });
+  await rm(options.bundlePath, { force: true });
   await git(options.dir, ["checkout", "--quiet", "-B", options.branch, options.baseSha]);
   await git(options.dir, ["config", "user.name", options.authorName]);
   await git(options.dir, ["config", "user.email", options.authorEmail]);
@@ -72,7 +78,10 @@ export async function commitCount(dir: string, baseSha: string): Promise<number>
   return Number((await git(dir, ["rev-list", "--count", `${baseSha}..HEAD`])).trim());
 }
 
-/** Writes the branch to a git bundle. */
-export async function bundleBranch(dir: string, branch: string, outFile: string): Promise<void> {
-  await git(dir, ["bundle", "create", "--quiet", outFile, branch]);
+/**
+ * Writes the branch to a git bundle, with only the commits after the base.
+ * The control plane has the base already, so the bundle stays small.
+ */
+export async function bundleBranch(dir: string, branch: string, baseSha: string, outFile: string): Promise<void> {
+  await git(dir, ["bundle", "create", "--quiet", outFile, `${baseSha}..${branch}`]);
 }
