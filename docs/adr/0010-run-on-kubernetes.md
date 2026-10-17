@@ -72,13 +72,15 @@ A `NetworkPolicy` only works when the cluster's network plugin enforces it. Some
 
 The chart sets no provider-specific options. Node autoscaling is the cluster's job: an autoscaling pool on Kapsule, the cluster autoscaler or node auto-provisioning on GKE, Karpenter on EKS, or the cluster autoscaler anywhere else. The operator gives the sandbox nodes a label and a taint, and tells the chart about them. The documentation lists the settings for each provider we have tried.
 
-`OPIFICIA_MAX_SANDBOXES` caps how many sandboxes run at once, so a burst of issues cannot grow the cluster without bound. Runs above the cap wait in the queue. Because a new node can take several minutes to start and to pull the sandbox image, the worker waits up to 15 minutes for a pod to be scheduled before it counts the time it takes the runner to say hello.
+`OPIFICIA_MAX_SANDBOXES` caps how many sandboxes run at once, so a burst of issues cannot grow the cluster without bound. Runs above the cap wait in the queue. Because a new node can take several minutes to start and to pull the sandbox image, a sandbox pod has 18 minutes to say hello, against 3 minutes for a Docker container.
 
 ### The chart and the images
 
 - **A Helm chart** in `deploy/helm/opificia`. It uses `Deployment`, `Service`, `Ingress`, `NetworkPolicy`, `HorizontalPodAutoscaler`, `PersistentVolumeClaim`, `ServiceAccount`, `Role`, `RoleBinding` and a `Job` for database migrations. No custom resources, and no annotations of any provider. Operators who do not use Helm can render it once with `helm template` and apply the result with `kubectl`.
 - **Secrets stay out of the chart.** The chart refers to a `Secret` the operator creates, holding the database URL, the auth secret, the GitHub App credentials and the model API key.
-- **The worker's permissions** are a `Role` in its own namespace: create, read, watch and delete pods, read pod logs, and read its own services. Nothing cluster-wide.
+- **The worker's permissions** are a `Role` in its own namespace: create, read, list and delete pods, read pod logs, and read its own services. Nothing cluster-wide.
+- **The worker talks to the API server itself**, with a few REST calls over `node:https` and the pod's service account. The official client, `@kubernetes/client-node`, would add 16 packages for six calls. For development, the worker can use `kubectl proxy` instead.
+- **Sandbox pod settings** come as one JSON value, `OPIFICIA_KUBERNETES_SANDBOX_POD`: runtime class, node selector, tolerations, image pull secrets, CPU, memory and disk. The chart fills it from its values, so no provider needs code of its own.
 - **A server image**, built from `apps/server/Dockerfile` on the pinned `node:24` image, which also serves the built web app. Operators build the sandbox image themselves, as before, because it contains Claude Code ([ADR-0004](0004-target-architecture.md)), and push both to a registry of their choice.
 
 ### The reference deployment
@@ -111,7 +113,6 @@ This is weaker than gVisor, and we say so in the documentation.
 
 This ADR adds:
 
-- `@kubernetes/client-node` (Apache-2.0), the official Kubernetes client for JavaScript, in `apps/server`;
 - Helm (Apache-2.0), as the format of the chart and a tool for operators. Opificia does not need it at run time;
 - for the reference deployment only: Scaleway Kapsule, Managed Database for PostgreSQL and Container Registry, all in `fr-par`.
 
@@ -138,12 +139,12 @@ Follow-up work:
 ### Sovereignty impact
 
 1. **Runs anywhere you choose.** Strengthened. Opificia runs on any conformant Kubernetes cluster, as well as on one machine, and the chart has no provider-specific parts.
-2. **No phone-home.** No impact. The chart sets the same telemetry switches as the Docker Compose file, and the Kubernetes client talks only to the cluster's API server.
+2. **No phone-home.** No impact. The chart sets the same telemetry switches as the Docker Compose file, and the worker talks to Kubernetes only through the cluster's API server.
 3. **Model-agnostic.** No impact.
 4. **Open standards.** Strengthened. The deployment uses only core Kubernetes resources and a standard Helm chart.
 5. **Your data stays yours.** No impact. Repositories and results now travel between the sandbox and the worker over the cluster network instead of through a disk, and are stored only by the worker, as before.
 6. **Humans decide.** No impact.
-7. **Transparent supply chain.** One library and one operator tool, both Apache-2.0.
+7. **Transparent supply chain.** One operator tool, under Apache-2.0. The worker talks to Kubernetes without a client library.
 8. **Reference deployment on European infrastructure.** Strengthened. The project's own factory runs on Scaleway in Paris.
 
 ## More information
