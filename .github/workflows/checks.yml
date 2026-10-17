@@ -7,7 +7,9 @@
 #   Link check         links in Markdown files (.lychee.toml). Links inside the
 #                      repository always; external links only in changed files on
 #                      pull requests and pushes, and in every file weekly
-#   Pull request title Conventional Commits, since squash merges use the title
+#   Pull request title Conventional Commits, since merge commits use the title
+#   Commit messages    Conventional Commits for every commit, since every commit
+#                      reaches main (ADR-0012)
 #
 # Scorecard, Labels and Website stay in their own workflows: they run on other
 # triggers and need write permissions or secrets that these checks do not. The
@@ -134,5 +136,43 @@ jobs:
             echo "Types:    ${types//|/, }"
             echo "Example:  docs: clarify the RFC process"
             echo "No full stop at the end; 100 characters at most."
+            exit 1
+          fi
+
+  commits:
+    name: Commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # Reads the subjects through the API; nothing from the pull request is
+      # checked out or run. Merges made by git or GitHub, such as "Merge
+      # branch 'main' into ...", keep their own wording.
+      - name: Check the subject of every commit
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          types='feat|fix|docs|chore|ci|refactor|test|build|perf|revert|style'
+          pattern="^(${types})(\([a-z0-9._/-]+\))?!?: [^ ].{0,98}[^.]$"
+          subjects="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | select((.parents | length) == 1) | "\(.sha[0:7]) \(.commit.message | split("\n")[0])"')"
+          wrong=0
+          while read -r sha subject; do
+            [ -n "$sha" ] || continue
+            if printf '%s' "$subject" | grep -qE "$pattern"; then
+              echo "ok     $sha $subject"
+            else
+              echo "wrong  $sha $subject"
+              wrong=1
+            fi
+          done <<< "$subjects"
+          if [ "$wrong" -ne 0 ]; then
+            echo
+            echo "Every commit reaches main, so every subject must follow Conventional Commits."
+            echo "Expected: type(optional scope): summary"
+            echo "Types:    ${types//|/, }"
+            echo "No full stop at the end; 100 characters at most."
+            echo "Reword them with: git rebase -i, then push with --force-with-lease."
             exit 1
           fi

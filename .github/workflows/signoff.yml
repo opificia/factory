@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: The Opificia Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# Second half of sign-off at the merge (ADR-0011). It runs from the default
-# branch after the Sign-off request workflow, so a pull request cannot change
-# it. It finds an approving review with "/signoff" by a maintainer on the
-# current head, runs the DCO check again, and squash-merges the approved head
-# as the Opificia bot, with the maintainer's Signed-off-by line in the squash
-# commit. It never rewrites the branch. See .github/scripts/signoff.sh.
+# Second half of sign-off at the merge (ADR-0011, ADR-0012). It runs from the
+# default branch after the Sign-off request workflow, so a pull request cannot
+# change it. It finds an approving review with "/signoff" by a maintainer on
+# the current head, runs the DCO check again, and merges the approved head as
+# the Opificia bot, with a merge commit that carries a Signed-off-by line for
+# each approving maintainer. It never rewrites the branch. See
+# .github/scripts/signoff.sh.
 #
 # Needs the repository variable OPIFICIA_BOT_APP_ID and the secret
 # OPIFICIA_BOT_PRIVATE_KEY, for a GitHub App installed only on this repository
