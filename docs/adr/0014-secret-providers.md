@@ -29,7 +29,7 @@ We choose option 5. Opificia AI gets secret providers: plugins that fetch a repo
 
 ### Order of work
 
-1. **CI results in the run.** The factory pushes its branches to the repository itself, so the repository's CI already runs on the pull request, with the repository's CI secrets. The control plane reads the results of the checks on the pull request's head commit through the forge adapter. When a check fails, the decider starts one more `implement` turn with the names of the failed checks and the end of their logs, and the control plane pushes the new commit to the same branch (`OPIFICIA_CI_RETRIES`, default 1). On GitHub, the App needs read access to Checks and Actions.
+1. **CI results in the run.** The factory pushes its branches to the repository itself, so the repository's CI already runs on the pull request, with the repository's CI secrets. The control plane reads the results of the checks on the pull request's head commit through the forge adapter. When a check fails, the decider starts one more `implement` turn with the names and conclusions of the failed checks, and the control plane pushes the new commit to the same branch (`OPIFICIA_CI_RETRIES`, default 1). GitHub masks secrets in logs only as plain text, so a test that prints a secret in another encoding gets it past the mask. The end of the logs therefore reaches the agent only when a person has turned that on for the repository, which suits repositories whose CI holds nothing but test credentials. On GitHub, the App needs read access to Checks, and to Actions for the logs.
 2. **Secret providers, the Scaleway Secret Manager plugin and the `debug` stage.**
 3. **The `verify` stage,** when CI is not enough: for forges or repositories without CI, or for feedback before a pull request opens.
 
@@ -96,13 +96,13 @@ The agent in the `implement` stage gets no secrets. Tests that need them fail or
 
 1. **A fresh sandbox, without a harness and without model access.** The runner runs commands. No agent takes part.
 2. **Install phase.** The repository's install command runs on the agent's branch, with the repository's network level and no secrets.
-3. **Test phase.** The gateway narrows the sandbox's network to the hosts of the test bindings, and nothing else. Only then does it send the secrets to the runner. The runner keeps them in memory and passes them as environment variables to the test command. It never writes them to disk. The narrowed network applies to the whole sandbox, so a process left over from the install phase gains nothing.
+3. **Test phase.** The runner ends every process left from the install phase, and checks that none is left, so that nothing the install scripts started can read the secrets later. Then the gateway narrows the sandbox's network to the hosts of the test bindings, and nothing else, and only then sends the secrets to the runner. The runner keeps them in memory and passes them as environment variables to the test command. It never writes them to disk.
 4. **The result** is a check finding: passed or failed, with the end of the output, capped in size. Before the output leaves the gateway, it is redacted: every value of the stage's secrets, in plain text and in base64, hex and URL encoding, is replaced with its name.
 5. **When it fails,** the decider starts one more `implement` turn with the redacted output (`OPIFICIA_VERIFY_RETRIES`, default 1). After that, the pull request opens with the failure reported, and a person decides.
 
 The install and test commands come from the repository's settings in Opificia, not from the repository, for the same reason as the bindings.
 
-The tests themselves were written or changed by the agent, so the `verify` stage runs code that someone may have steered. The design limits what that code can do with the secrets. It can reach only the hosts the secrets belong to, so it can only use a test credential against its own test service. Its output passes through the redaction before the agent sees it.
+The tests themselves were written or changed by the agent, so the `verify` stage runs code that someone may have steered. The design limits what that code can do with the secrets. It can reach only the hosts of the stage's test bindings, and its output passes through the redaction before the agent sees it. The proxy sees host names, not which credential a request carries, so the code can still send one binding's secret to another binding's host. All of those are the operator's own test services, and test credentials must be ones whose leak to any of them does no harm.
 
 ### The `debug` stage
 
@@ -111,7 +111,8 @@ A `debug` stage replaces the `plan` stage for an issue that needs investigation.
 - **A person starts it.** No label, webhook or agent can start it. The repository must have the debug scope turned on.
 - **A person approves the secrets.** When the stage starts, the person sees the list of debug bindings and picks the ones this run may use. The agent can ask for more during the stage through a runtime request, which waits for a person, like other requests that need someone ([ADR-0004](0004-target-architecture.md)).
 - **Read-only and short-lived, where possible.** The settings page marks bindings that can write, and asks the person to confirm them separately. With a provider that issues leases, they end with the stage at the latest. Static secrets, which is all that the `file` and `scaleway` providers offer, stay valid after the stage, so the run page lists them and suggests rotating them.
-- **The network** allows the built-in registry list and the hosts of the granted secrets. Unknown hosts are refused. The decision model of ADR-0007 is not used, and a person can still allow a host.
+- **Tools first, secrets second.** The stage starts with the repository's install command, with the built-in registry list and no secrets. The runner then ends every process that left running, the gateway narrows the network to the hosts of the granted secrets, and only then does the harness start, with the secrets. Once the agent holds them, it cannot install anything or reach a registry. Unknown hosts are refused, the decision model of ADR-0007 is not used, and a person can still allow a host.
+- **The person sees every host.** The proxy cannot tell which credential a request carries, so the agent could send one granted secret to the host of another. The person approves the secrets together with the list of their hosts.
 - **The agent gets the secrets** as environment variables of the harness process. The runner passes them on, and never writes them to disk.
 - **The output is a report**, a Markdown document on the run page. The stage's branch is discarded. A following `plan` or `implement` stage gets the report, and no secrets. Posting the report to the issue needs a person's click, because the report may contain data from the systems the agent looked at.
 
@@ -136,14 +137,14 @@ Server, runner and harness change together, as `AGENTS.md` requires.
 
 | Path | What limits it |
 | --- | --- |
-| A steered agent sends a secret out | The `implement` agent has none. In `debug`, the network allows only registries and the secrets' own hosts, and a person granted each secret. |
-| Steered test code sends a test secret out | The network allows only the secrets' own hosts. Test credentials should be worth little outside their test service. |
+| A steered agent sends a secret out | The `implement` agent has none. In `debug`, once the agent holds secrets, the network allows only the hosts of the granted secrets, and a person granted each secret and saw those hosts. |
+| Steered test code sends a test secret out | The install phase's processes are ended first, and the network allows only the hosts of the stage's test bindings. Test credentials must be harmless at any of those hosts. |
 | A secret travels back through test output | Redaction in four encodings and a size cap. A deliberate encoding the redaction does not know still gets through, so test secrets must be ones whose leak is a nuisance, not an incident. |
 | A secret ends up in the pull request | The checker scans for the run's secret values and blocks the push. |
 | The agent changes the commands or the bindings | Both live in Opificia's settings, not in the repository. |
 | `debug` data reaches the model provider | The agent reads logs and records, and the model provider sees them. The operator chooses the model for the debug stage per repository. |
 | A process escapes the sandbox | It finds only the secrets of its own stage. The store's credentials stay in the control plane. |
-| Steered test code runs in the repository's CI (step 1) | The checker blocks changes to workflow files. CI secrets worth more than test credentials belong in a GitHub environment that requires a reviewer. GitHub masks secret values in logs, in plain text only. |
+| Steered test code runs in the repository's CI (step 1) | The checker blocks changes to workflow files. CI secrets worth more than test credentials belong in a GitHub environment that requires a reviewer. GitHub masks secret values in logs, in plain text only, so the end of the logs reaches the agent only where a person turned that on. |
 
 ### Dependencies
 

@@ -9,7 +9,7 @@
 
 [ADR-0010](0010-run-on-kubernetes.md) keeps secrets out of the Helm chart. The chart refers to a Kubernetes `Secret` that the operator creates. It holds the database URL, the auth secret, the GitHub App credentials and the model API key. With [ADR-0007](0007-sandbox-network-policy.md), the Sference key joins them.
 
-That leaves open how the project fills this `Secret` for its own reference deployment on Scaleway Kapsule, which runs our own factory and the managed cloud. Creating it by hand with `kubectl` works, but the values then live on the laptops of the people who created it, nobody can see who read or changed them, and rotating a key means repeating the steps by hand.
+That leaves open how the project fills this `Secret` for its own reference deployment on Scaleway Kapsule, which will run our own factory and the managed cloud ([ADR-0010](0010-run-on-kubernetes.md)). Creating it by hand with `kubectl` works, but the values then live on the laptops of the people who created it, nobody can see who read or changed them, and rotating a key means repeating the steps by hand.
 
 We also want agents to use repository secrets, such as test credentials, through a secret provider (see [ADR-0014](0014-secret-providers.md)). The people who run the factory would then manage two kinds of secrets: the factory's own, and those of the repositories it works on. One tool for both is simpler to learn, to audit and to secure.
 
@@ -28,19 +28,19 @@ We choose option 2.
 ### How it works
 
 - **One Scaleway project** for the factory's secrets, `opificia-factory`, in `fr-par`, the region of the cluster. Each secret has a path per deployment. The reference deployment uses `/production/`.
-- **External Secrets Operator** (ESO) runs in the reference cluster, in its own namespace, on the control-plane pool. It reads the secrets under `/production/` and writes the `Secret` that the chart refers to. It refreshes every hour.
+- **External Secrets Operator** (ESO) runs in the reference cluster, in its own namespace, on the control-plane pool. A `ClusterSecretStore` holds the connection to Secret Manager, with its credential in ESO's namespace. An `ExternalSecret` in Opificia's namespace tells ESO to read the secrets under `/production/` and to write, in that namespace, the `Secret` that the chart refers to. It refreshes every hour.
 - **A dedicated IAM application**, `opificia-factory-secrets`, as for the website in [ADR-0003](0003-host-the-website-on-scaleway.md). Its policy grants `SecretManagerReadOnly` and `SecretManagerSecretAccess` on the project `opificia-factory` only, with a resource-level condition that limits it to `/production/`. It cannot create, change or delete secrets. Its API key is the one secret we still create by hand, in ESO's namespace.
-- **The chart does not change.** It still refers to a plain `Secret` and knows nothing of ESO or Scaleway. ESO and its `SecretStore` are part of the reference deployment, not of Opificia.
+- **The chart does not change.** It still refers to a plain `Secret` and knows nothing of ESO or Scaleway. ESO, the `ClusterSecretStore` and the `ExternalSecret` are part of the reference deployment, not of Opificia.
 - **Rotation.** We add a new version in Secret Manager. The server reads its configuration when it starts, so after ESO has updated the `Secret`, within the hour, we restart the deployments. Restarting them automatically would need another component, and can wait.
 
 ESO and its pods never run on the sandbox pool. Its application can read every secret of the control plane, so it belongs with the control plane, behind the taint that keeps sandbox pods away ([ADR-0010](0010-run-on-kubernetes.md)).
 
 ### Reasons
 
-- We already run the website and the reference deployment on Scaleway, and know its IAM. Secret Manager adds no new provider, contract or account for the people who run the factory.
+- We already run the website on Scaleway and know its IAM, and the reference deployment will run there too. Secret Manager adds no new provider, contract or account for the people who run the factory.
 - Scaleway is headquartered in France, and the secrets stay in `fr-par`. This keeps commitment 8.
 - Secret Manager has versions, paths, IAM policies that can limit access to one path, and Scaleway's audit trail. That is enough for the factory's own secrets and for repository secrets.
-- ESO keeps the cluster side independent of the store. Moving to another store later means changing one `SecretStore` and copying the values. The chart and the server stay as they are.
+- ESO keeps the cluster side independent of the store. Moving to another store later means changing the `ClusterSecretStore` and copying the values. The chart and the server stay as they are.
 - Option 1 does not scale beyond one person, and leaves no record.
 - Option 3 makes us operate the service that holds the keys to everything else, before we have the people to do that well.
 
