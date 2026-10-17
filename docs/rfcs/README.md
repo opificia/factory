@@ -12,6 +12,8 @@ You need an RFC for:
 - any change that affects a commitment in [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md); and
 - changes to policy files: licences, governance, the trademark policy.
 
+**Before version 1.0.0**, you need an RFC only for changes to policy files, and for adding, removing or weakening a commitment in [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md). Other significant changes are decided by an [ADR](../adr/README.md) in a pull request, as [`GOVERNANCE.md`](../../GOVERNANCE.md) describes. A maintainer can still ask for an RFC when a change is contested.
+
 You do not need an RFC for bug fixes, documentation improvements, refactoring that does not change behaviour, or small features with no effect on interfaces. When in doubt, ask in a Discussion.
 
 ## Lifecycle

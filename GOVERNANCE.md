@@ -28,6 +28,14 @@ Significant changes need an RFC (request for comments, a written proposal). That
 
 An RFC is open for comments for at least **14 days**. After that, the maintainers accept it if there is consensus. Accepted decisions about architecture are recorded as ADRs (architecture decision records) in [`docs/adr/`](docs/adr/README.md).
 
+**Before version 1.0.0.** Until version 1.0.0 is released, the project changes too fast, and too few people follow it, for a 14-day comment period on every significant change. Until then:
+
+- significant technical changes, such as new components, new runtime dependencies and changes to public interfaces, are decided by an ADR in a pull request, by lazy consensus, without an RFC. This includes changes that affect a commitment in [`SOVEREIGNTY.md`](SOVEREIGNTY.md) without weakening it. The ADR states the impact on each commitment;
+- changes to policy files (see below), and adding, removing or weakening a commitment in [`SOVEREIGNTY.md`](SOVEREIGNTY.md), still need an RFC;
+- any maintainer can ask for an RFC when a change is contested, and anyone may write one.
+
+From version 1.0.0, every significant change needs an RFC.
+
 ### Maintainer vote as a fallback
 
 If consensus cannot be reached, any maintainer can call a vote. The vote stays open for at least 7 days. A **simple majority** of the votes cast decides. During the founding phase, the steward breaks a tie.

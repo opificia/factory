@@ -13,7 +13,9 @@ Write an ADR when a decision:
 - affects a commitment in [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md); or
 - settles a question that people keep asking.
 
-Large or contested decisions start as an [RFC](../rfcs/README.md). Once the RFC is accepted, record the outcome as an ADR. Small, clear decisions can go straight to an ADR in a pull request.
+From version 1.0.0, every significant change starts as an [RFC](../rfcs/README.md), as [`GOVERNANCE.md`](../../GOVERNANCE.md) describes. Once the RFC is accepted, record the outcome as an ADR. Small, clear decisions that are not significant changes can go straight to an ADR in a pull request.
+
+Before version 1.0.0, technical decisions go straight to an ADR, unless a maintainer asks for an RFC because the decision is contested. Changes to policy files, and adding, removing or weakening a sovereignty commitment, still start as an RFC. See [`GOVERNANCE.md`](../../GOVERNANCE.md).
 
 ## How to write one
 
