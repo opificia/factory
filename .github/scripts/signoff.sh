@@ -57,10 +57,24 @@ token() {
   output token "$token"
 }
 
+# The maintainers whose latest review approves HEAD_SHA with "/signoff", on
+# pull request $1, separated by spaces. Reviews are read again on every call:
+# a reviewer can withdraw a sign-off, or another can give one, at any time.
+signers() {
+  local reviews logins="" candidate commit_id
+  reviews="$("$here/signoff-reviews.sh" "$GITHUB_REPOSITORY" "$1")" || die "Could not read the reviews of #$1."
+  while read -r candidate commit_id; do
+    [ -n "$candidate" ] && [ "$commit_id" = "$HEAD_SHA" ] || continue
+    if cut -f1 "$MAINTAINERS_FILE" | grep -qxF "$candidate"; then logins+="${logins:+ }$candidate"; fi
+  done <<< "$reviews"
+  [[ -z "$logins" || "$logins" =~ ^[a-z0-9-]+( [a-z0-9-]+)*$ ]] || die "Unexpected reviewers on #$1."
+  echo "$logins"
+}
+
 # --- find -------------------------------------------------------------------
 # Needs GH_TOKEN (read access), HEAD_SHA and MAINTAINERS_FILE.
 find_review() {
-  local pr number reviews logins=""
+  local pr number logins
   pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" --jq \
     "[.[] | select(.state == \"open\" and .head.sha == \"$HEAD_SHA\" and .head.repo.full_name == \"$GITHUB_REPOSITORY\")][0] // empty")"
   if [ -z "$pr" ]; then
@@ -70,11 +84,7 @@ find_review() {
   number="$(jq -r .number <<< "$pr")"
   # Approvals on exactly this commit, with a line that reads "/signoff".
   # Each reviewer's latest review counts, and it must be on this exact commit.
-  reviews="$("$here/signoff-reviews.sh" "$GITHUB_REPOSITORY" "$number")"
-  while read -r candidate commit_id; do
-    [ -n "$candidate" ] && [ "$commit_id" = "$HEAD_SHA" ] || continue
-    if cut -f1 "$MAINTAINERS_FILE" | grep -qxF "$candidate"; then logins+="${logins:+ }$candidate"; fi
-  done <<< "$reviews"
+  logins="$(signers "$number")"
   if [ -z "$logins" ]; then
     note "No approving review with /signoff by a maintainer on $HEAD_SHA. Nothing to do."
     return 0
@@ -157,25 +167,32 @@ squash_message() {
   printf '%s\n%s\n' "$subjects" "$(grep -v '^$' <<< "$trailers" | awk '!seen[tolower($0)]++')"
 }
 
-# Needs GH_TOKEN (the bot's token), LOGINS, NUMBER, HEAD_SHA, DEADLINE and
-# MAINTAINERS_FILE. Every maintainer who approved with /signoff signs off:
-# the DCO check accepted commits by any of them. GitHub merges only if the head is still the approved
+# Needs GH_TOKEN (the bot's token), NUMBER, HEAD_SHA, DEADLINE and
+# MAINTAINERS_FILE. Every maintainer whose sign-off stands at the moment of
+# the merge signs off, because the DCO check accepts commits by any of them.
+# The signers are read again before each attempt: one who withdrew since the
+# run started must not sign, and one who joined must. GitHub merges only if the head is still the approved
 # commit ("sha") and the branch rules are met, such as the required checks.
 merge() {
-  : "${LOGINS:?}" "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
-  local login name email message deadline="$DEADLINE" result title signers=() names=()
-  for login in $LOGINS; do
-    name="$(awk -F '\t' -v h="$login" '$1 == h { print $2 }' "$MAINTAINERS_FILE")"
-    email="$(awk -F '\t' -v h="$login" '$1 == h { print $3 }' "$MAINTAINERS_FILE")"
-    [ -n "$name" ] && [ -n "$email" ] || die "$login is not a maintainer with an email address in MAINTAINERS.md."
-    signers+=("$name <$email>")
-    names+=("$name")
-  done
+  : "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
+  local login logins name email message deadline="$DEADLINE" result title commits signers names
   title="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq .title)"
-  message="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" \
-    --jq '.[] | "\(.commit.author.email | @base64) \(.commit.message | @base64)"' | squash_message "${signers[@]}")"
+  commits="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" \
+    --jq '.[] | "\(.commit.author.email | @base64) \(.commit.message | @base64)"')"
 
   while :; do
+    logins="$(signers "$NUMBER")"
+    [ -n "$logins" ] || die "No maintainer's sign-off on $HEAD_SHA stands any more. Nothing was merged."
+    signers=()
+    names=()
+    for login in $logins; do
+      name="$(awk -F '\t' -v h="$login" '$1 == h { print $2 }' "$MAINTAINERS_FILE")"
+      email="$(awk -F '\t' -v h="$login" '$1 == h { print $3 }' "$MAINTAINERS_FILE")"
+      [ -n "$name" ] && [ -n "$email" ] || die "$login is not a maintainer with an email address in MAINTAINERS.md."
+      signers+=("$name <$email>")
+      names+=("$name")
+    done
+    message="$(squash_message "${signers[@]}" <<< "$commits")"
     if result="$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/merge" \
       -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$title (#$NUMBER)" -f commit_message="$message" \
       --jq .sha 2>&1)"; then

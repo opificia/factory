@@ -71,7 +71,6 @@ jobs:
         if: steps.review.outputs.logins != ''
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          LOGINS: ${{ steps.review.outputs.logins }}
           DEADLINE: ${{ steps.review.outputs.deadline }}
           NUMBER: ${{ steps.review.outputs.number }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}

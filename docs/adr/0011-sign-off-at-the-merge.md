@@ -32,7 +32,7 @@ We choose option 3.
 3. The `Sign-off` workflow runs the DCO check again, now that the approval exists. It then squash-merges the pull request through the GitHub API as the Opificia bot, with:
    - the head commit the maintainer approved as the expected head, so GitHub refuses the merge if anyone pushed after the approval;
    - the subjects of the commits, their `Assisted-by` and `Co-authored-by` lines, the sign-offs their authors gave themselves, and the `Signed-off-by` line of every maintainer who approved with `/signoff`, with the name and email address in [`MAINTAINERS.md`](../../MAINTAINERS.md), in the squash commit's message. A `Signed-off-by` line for anyone other than the commit's author is left out, because anyone can type one, and on `main` it would read as that person's certification.
-4. The merge waits for the required checks, as any merge does, up to 30 minutes for the re-run DCO check and the merge together.
+4. The merge waits for the required checks, as any merge does, up to 30 minutes for the re-run DCO check and the merge together. Before each attempt to merge, the workflow reads the reviews again: a maintainer who withdrew their sign-off in the meantime does not sign, one who gave it does, and with no sign-off left nothing is merged.
 
 Option 3 of ADR-0006 was close to this, and ADR-0006 rejected it because the maintainer had to type the sign-off line correctly at the merge, and nothing could check it before. Here the workflow writes the line, from the approval the check already verified.
 
