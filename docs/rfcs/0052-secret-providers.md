@@ -1,10 +1,10 @@
-# RFC-NNNN: Secret providers, with test and debug secrets for agents
+# RFC-0052: Secret providers, with test and debug secrets for agents
 
 - **Status:** draft
 - **Author(s):** Bram De Backer
 - **Created:** 2026-10-17
 - **Comment period ends:** to be set when the comment period starts (at least 14 days)
-- **Discussion:** the pull request that adds this RFC
+- **Discussion:** <https://github.com/opificia/factory/pull/52>
 
 ## Summary
 
