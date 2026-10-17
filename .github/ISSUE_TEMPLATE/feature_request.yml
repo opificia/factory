@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        For early ideas, start a thread in the Ideas category of Discussions first. Significant changes need an RFC; see docs/rfcs/README.md.
+        For early ideas, start a thread in the Ideas category of Discussions first. Significant changes need an ADR or an RFC; see docs/rfcs/README.md.
   - type: textarea
     id: problem
     attributes:

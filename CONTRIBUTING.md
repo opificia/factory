@@ -17,7 +17,7 @@ Code contributions will follow once the first architecture decisions are recorde
 
 - **Small fixes** (typos, broken links): open a pull request directly.
 - **Ideas and questions**: start a thread in [GitHub Discussions](https://github.com/opificia/factory/discussions). Discussing first saves you from writing something we cannot accept.
-- **Significant changes** (new components, new dependencies, changes to policies or to a sovereignty commitment): write an RFC. See [`docs/rfcs/README.md`](docs/rfcs/README.md).
+- **Significant changes**: changes to policies, and adding, removing or weakening a sovereignty commitment, need an RFC. See [`docs/rfcs/README.md`](docs/rfcs/README.md). Until version 1.0.0, other significant changes, such as new components, new dependencies and interface changes, need an ADR instead. See [`docs/adr/README.md`](docs/adr/README.md).
 - **Security issues**: do not open an issue or pull request. Follow [`SECURITY.md`](SECURITY.md).
 
 Everyone taking part must follow the [Code of Conduct](CODE_OF_CONDUCT.md).
