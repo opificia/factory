@@ -29,8 +29,10 @@ app.setGlobalPrefix("api");
 app.useGlobalFilters(new DomainErrorFilter(app.get(HttpAdapterHost).httpAdapter));
 
 if (config.OPIFICIA_ROLE !== "api") {
-  await app.get<SandboxBackend>(SANDBOX_BACKEND).prepare();
+  // The gateway listens first: preparing the backend may start a sandbox
+  // that has to reach it, such as the network probe on Kubernetes.
   await app.get(SandboxGateway).listen();
+  await app.get<SandboxBackend>(SANDBOX_BACKEND).prepare();
   await app.get(SessionsService).reconcile();
   app.get(OutboxWorker).start();
   app.get(PollerService).start();

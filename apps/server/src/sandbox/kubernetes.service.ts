@@ -146,8 +146,16 @@ const attempt = (target) => new Promise((done) => {
   socket.once("timeout", () => { socket.destroy(); done(false); });
   socket.once("error", () => done(false));
 });
+// The worker's service may need a moment to route to it; try for a minute.
+const reachGateway = async () => {
+  for (let i = 0; i < 20; i++) {
+    if (await attempt(process.env.PROBE_GATEWAY)) return true;
+    await new Promise((done) => setTimeout(done, 3000));
+  }
+  return false;
+};
 const targets = JSON.parse(process.env.PROBE_TARGETS);
-Promise.all([attempt(process.env.PROBE_GATEWAY), ...targets.map(attempt)]).then(([gateway, ...reached]) => {
+Promise.all([reachGateway(), ...targets.map(attempt)]).then(([gateway, ...reached]) => {
   const open = targets.filter((_, i) => reached[i]);
   if (open.length) { console.log("reached " + open.join(", ")); process.exit(1); }
   if (!gateway) { console.log("could not reach the gateway at " + process.env.PROBE_GATEWAY); process.exit(2); }
