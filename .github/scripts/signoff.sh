@@ -171,7 +171,10 @@ squash_message() {
 # MAINTAINERS_FILE. Every maintainer whose sign-off stands at the moment of
 # the merge signs off, because the DCO check accepts commits by any of them.
 # The signers are read again before each attempt: one who withdrew since the
-# run started must not sign, and one who joined must. GitHub merges only if the head is still the approved
+# run started must not sign, and one who joined must. A short window remains
+# between reading the reviews and the merge, because GitHub cannot make a merge
+# depend on the reviews. The branch rule that requires an approving review
+# closes it: GitHub itself refuses the merge once the approval is withdrawn. GitHub merges only if the head is still the approved
 # commit ("sha") and the branch rules are met, such as the required checks.
 merge() {
   : "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
