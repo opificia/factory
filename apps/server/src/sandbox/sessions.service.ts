@@ -20,11 +20,9 @@ import { CONFIG, type Config } from "../config.js";
 import { PrismaService } from "../prisma.service.js";
 import { DomainError } from "../runs/decider.js";
 import { EventStore } from "../runs/event-store.service.js";
-import { DockerService } from "./docker.service.js";
+import { SANDBOX_BACKEND, shortId, type SandboxBackend } from "./backend.js";
 import { EgressBudget } from "./egress-policy.js";
 
-/** How long a sandbox may take to connect after it starts. */
-const HELLO_TIMEOUT_MS = 3 * 60 * 1000;
 /** Progress events kept per stage; more are dropped. */
 const MAX_EVENTS_PER_SESSION = 3000;
 /** Lines written to a session's egress log; more are dropped. */
@@ -51,8 +49,8 @@ function sameHash(a: string, b: string): boolean {
 }
 
 /**
- * Sandbox sessions: one container for one stage of a run. This service starts
- * and watches containers, and speaks the runner protocol with them.
+ * Sandbox sessions: one sandbox for one stage of a run. This service starts
+ * and watches sandboxes, and speaks the runner protocol with them.
  */
 @Injectable()
 export class SessionsService {
@@ -69,7 +67,7 @@ export class SessionsService {
   constructor(
     @Inject(CONFIG) private readonly config: Config,
     private readonly prisma: PrismaService,
-    private readonly docker: DockerService,
+    @Inject(SANDBOX_BACKEND) private readonly sandboxes: SandboxBackend,
     private readonly events: EventStore,
   ) {}
 
@@ -109,7 +107,7 @@ export class SessionsService {
   async launch(sessionId: string, token: string): Promise<void> {
     const session = await this.prisma.sandboxSession.findUniqueOrThrow({ where: { id: sessionId } });
     const { base } = this.dirs(session.runId, session.id);
-    const gateway = this.docker.gatewayUrl;
+    const gateway = this.sandboxes.gatewayUrl;
     const task = RunnerTask.parse(session.task);
     const env: Record<string, string> = {
       OPIFICIA_RUNNER_URL: `ws://${gateway}/runner`,
@@ -125,14 +123,14 @@ export class SessionsService {
       this.egressBudgets.set(sessionId, new EgressBudget());
       env.OPIFICIA_EGRESS_PROXY = `http://${sessionId}:${egressToken}@${gateway}`;
     }
-    const containerId = await this.docker.startSandbox({
+    const containerId = await this.sandboxes.startSandbox({
       sessionId,
       runId: session.runId,
       image: this.config.OPIFICIA_SANDBOX_IMAGE,
       env,
     });
     await this.prisma.sandboxSession.update({ where: { id: sessionId }, data: { containerId } });
-    this.logger.log(`run ${session.runId}: started ${session.stage} sandbox ${containerId.slice(0, 12)}`);
+    this.logger.log(`run ${session.runId}: started ${session.stage} sandbox ${shortId(containerId)}`);
 
     const helloTimer = setTimeout(() => {
       void this.prisma.sandboxSession
@@ -140,18 +138,18 @@ export class SessionsService {
         .then(async (s) => {
           if (s?.status === "starting") {
             this.logger.warn(`session ${sessionId} did not connect in time`);
-            await this.docker.stop(containerId);
+            await this.sandboxes.stop(containerId);
           }
         })
         .catch((error: Error) => this.logger.error(`checking session ${sessionId}: ${error.message}`));
-    }, HELLO_TIMEOUT_MS);
+    }, this.sandboxes.helloTimeoutMs);
 
-    void this.docker
+    void this.sandboxes
       .waitForExit(containerId)
       .then(async (exitCode) => {
         clearTimeout(helloTimer);
-        await this.docker.saveLogs(containerId, join(base, "container.log")).catch(() => undefined);
-        await this.docker.remove(containerId);
+        await this.sandboxes.saveLogs(containerId, join(base, "container.log")).catch(() => undefined);
+        await this.sandboxes.remove(containerId);
         await this.onExit(sessionId, exitCode);
       })
       .catch((error: Error) => this.logger.error(`watching ${containerId}: ${error.message}`));
@@ -194,13 +192,13 @@ export class SessionsService {
       const active = this.active.get(session.id);
       active?.socket?.send(JSON.stringify({ jsonrpc: "2.0", method: RunnerMethods.cancel, params: { reason } }));
       this.active.delete(session.id);
-      if (session.containerId) await this.docker.stop(session.containerId);
+      if (session.containerId) await this.sandboxes.stop(session.containerId);
     }
   }
 
   /** After a restart, nothing watches old sandboxes. Stop them and fail their runs. */
   async reconcile(): Promise<void> {
-    for (const container of await this.docker.listSandboxes()) await this.docker.remove(container.id);
+    for (const container of await this.sandboxes.listSandboxes()) await this.sandboxes.remove(container.id);
     const stale = await this.prisma.sandboxSession.findMany({ where: { status: { in: ["starting", "running"] } } });
     for (const session of stale) {
       await this.prisma.sandboxSession.update({ where: { id: session.id }, data: { status: "failed", endedAt: new Date() } });

@@ -28,6 +28,36 @@ export const EgressAllow = z
     return ctx.issues.length > 0 ? z.NEVER : hosts;
   });
 
+/**
+ * Settings for sandbox pods on Kubernetes (ADR-0010), as JSON. They let the
+ * operator choose the nodes and the runtime without provider-specific code.
+ */
+export const SandboxPodSettings = z
+  .string()
+  .default("{}")
+  .transform((v, ctx) => {
+    try {
+      return JSON.parse(v) as unknown;
+    } catch {
+      ctx.addIssue({ code: "custom", message: "must be a JSON object" });
+      return z.NEVER;
+    }
+  })
+  .pipe(
+    z.strictObject({
+      /** For example `gvisor` on GKE Sandbox. */
+      runtimeClassName: z.string().optional(),
+      nodeSelector: z.record(z.string(), z.string()).default({}),
+      tolerations: z.array(z.record(z.string(), z.unknown())).default([]),
+      imagePullSecrets: z.array(z.string()).default([]),
+      cpu: z.string().default("2"),
+      memory: z.string().default("4Gi"),
+      /** Disk for the working copy, packages and builds. */
+      workSize: z.string().default("8Gi"),
+    }),
+  );
+export type SandboxPodSettings = z.infer<typeof SandboxPodSettings>;
+
 const Env = z.object({
   DATABASE_URL: z.string().min(1),
   VALKEY_URL: z.string().optional(),
@@ -50,6 +80,21 @@ const Env = z.object({
   OPIFICIA_SANDBOX_BIND: z.string().default("0.0.0.0"),
   OPIFICIA_DATA_DIR: z.string().default(fileURLToPath(new URL("../../../.data", import.meta.url))),
   OPIFICIA_SANDBOX_IMAGE: z.string().default("opificia/harness-claude:dev"),
+  /** Where sandboxes run: the local Docker engine, or pods in a Kubernetes cluster (ADR-0010). */
+  OPIFICIA_SANDBOX_BACKEND: z.enum(["docker", "kubernetes"]).default("docker"),
+  /** Sandboxes that may run at once. Runs above the limit wait in the queue. */
+  OPIFICIA_MAX_SANDBOXES: z.coerce.number().int().positive().default(4),
+  /** The Kubernetes API, when the worker runs outside the cluster, such as `kubectl proxy` at http://127.0.0.1:8001. */
+  OPIFICIA_KUBERNETES_API: z.url().optional(),
+  /** The namespace for sandbox pods. Defaults to the worker's own namespace. */
+  OPIFICIA_KUBERNETES_NAMESPACE: z.string().optional(),
+  /** The service through which sandbox pods reach the worker's sandbox port. */
+  OPIFICIA_KUBERNETES_GATEWAY_SERVICE: z.string().default("opificia-sandbox"),
+  OPIFICIA_KUBERNETES_SANDBOX_POD: SandboxPodSettings,
+  /** The image for the network probe; it needs `node`. Defaults to the sandbox image. */
+  OPIFICIA_KUBERNETES_PROBE_IMAGE: z.string().optional(),
+  /** Whether to check, before the first sandbox, that the cluster enforces the sandbox network policy. */
+  OPIFICIA_KUBERNETES_NETWORK_PROBE: z.enum(["on", "off"]).default("on"),
   OPIFICIA_TRIGGER_LABEL: z.string().default("opificia"),
   OPIFICIA_POLL_INTERVAL_SECONDS: z.coerce.number().positive().default(30),
   OPIFICIA_RUN_BUDGET_USD: z.coerce.number().positive().default(15),

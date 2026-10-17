@@ -18,7 +18,20 @@ import { SessionsService } from "../sandbox/sessions.service.js";
 /** Below this remaining budget, a run does not start another stage. */
 const MIN_STAGE_BUDGET_USD = 0.5;
 
+/** How long a stage waits before it checks again for room for its sandbox. */
+const WAIT_FOR_ROOM_MS = 30_000;
+
 export type StoredEffect = { id: bigint; orgId: string; runId: string; type: string; payload: unknown };
+
+/** An effect that cannot happen yet. The outbox tries it again later, without counting an attempt. */
+export class Deferred extends Error {
+  constructor(
+    message: string,
+    readonly delayMs: number,
+  ) {
+    super(message);
+  }
+}
 
 /**
  * Performs the side effects that run events ask for. Each handler checks the
@@ -28,6 +41,8 @@ export type StoredEffect = { id: bigint; orgId: string; runId: string; type: str
 @Injectable()
 export class EffectsService {
   private readonly logger = new Logger(EffectsService.name);
+  /** Stages this worker is starting, which may not have a session yet. */
+  private starting = 0;
 
   constructor(
     @Inject(CONFIG) private readonly config: Config,
@@ -80,6 +95,19 @@ export class EffectsService {
       return;
     }
 
+    // Count the stages starting now too, so concurrent starts see each other.
+    this.starting += 1;
+    try {
+      const busy = await this.prisma.sandboxSession.count({ where: { status: { in: ["starting", "running"] } } });
+      const limit = this.config.OPIFICIA_MAX_SANDBOXES;
+      if (busy + this.starting > limit) throw new Deferred(`all ${limit} sandboxes are busy`, WAIT_FOR_ROOM_MS);
+      await this.launchStage(run, stage, remaining);
+    } finally {
+      this.starting -= 1;
+    }
+  }
+
+  private async launchStage(run: Run, stage: Stage, remaining: number): Promise<void> {
     const installationId = Number(run.installationId);
     const token = await this.github.repoToken(installationId, run.repo, false);
     const { defaultBranch } = await this.github.getRepo(installationId, run.repo);

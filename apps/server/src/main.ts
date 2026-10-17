@@ -12,7 +12,7 @@ import { AUTH, type Auth } from "./auth/auth.js";
 import { DomainErrorFilter } from "./common/http.js";
 import { loadConfig } from "./config.js";
 import { PollerService } from "./github/poller.service.js";
-import { DockerService } from "./sandbox/docker.service.js";
+import { SANDBOX_BACKEND, type SandboxBackend } from "./sandbox/backend.js";
 import { SandboxGateway } from "./sandbox/gateway.server.js";
 import { SessionsService } from "./sandbox/sessions.service.js";
 import { OutboxWorker } from "./worker/outbox.worker.js";
@@ -29,11 +29,7 @@ app.setGlobalPrefix("api");
 app.useGlobalFilters(new DomainErrorFilter(app.get(HttpAdapterHost).httpAdapter));
 
 if (config.OPIFICIA_ROLE !== "api") {
-  const docker = app.get(DockerService);
-  if (!(await docker.imageExists(config.OPIFICIA_SANDBOX_IMAGE))) {
-    logger.warn(`the sandbox image ${config.OPIFICIA_SANDBOX_IMAGE} is missing; build it with: pnpm sandbox:build`);
-  }
-  await docker.prepare();
+  await app.get<SandboxBackend>(SANDBOX_BACKEND).prepare();
   await app.get(SandboxGateway).listen();
   await app.get(SessionsService).reconcile();
   app.get(OutboxWorker).start();
