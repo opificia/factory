@@ -3,7 +3,7 @@
 - **Status:** proposed
 - **Date:** 2026-10-17
 - **Deciders:** the maintainers, with the project steward as architecture owner
-- **Related:** [ADR-0003](0003-host-the-website-on-scaleway.md), [ADR-0007](0007-sandbox-network-policy.md), [ADR-0010](0010-run-on-kubernetes.md), [RFC: secret providers](../rfcs/0000-secret-providers.md), [`AGENTS.md`](../../AGENTS.md) rule 5, [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md)
+- **Related:** [ADR-0003](0003-host-the-website-on-scaleway.md), [ADR-0007](0007-sandbox-network-policy.md), [ADR-0010](0010-run-on-kubernetes.md), [RFC-0051](../rfcs/0051-secret-providers.md), [`AGENTS.md`](../../AGENTS.md) rule 5, [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md)
 
 ## Context
 
@@ -11,7 +11,7 @@
 
 That leaves open how the project fills this `Secret` for its own reference deployment on Scaleway Kapsule, which runs our own factory and the managed cloud. We want both running soon, so we prefer a service we can use today over one we must first learn to operate. Creating it by hand with `kubectl` works, but the values then live on the laptops of the people who created it, nobody can see who read or changed them, and rotating a key means repeating the steps by hand.
 
-We also want agents to use repository secrets, such as test credentials, through a secret provider plugin (see the [RFC on secret providers](../rfcs/0000-secret-providers.md)). The people who run the factory would then manage two kinds of secrets: the factory's own, and those of the repositories it works on. One tool for both is simpler to learn, to audit and to secure.
+We also want agents to use repository secrets, such as test credentials, through a secret provider plugin (see the [RFC on secret providers](../rfcs/0051-secret-providers.md)). The people who run the factory would then manage two kinds of secrets: the factory's own, and those of the repositories it works on. One tool for both is simpler to learn, to audit and to secure.
 
 This ADR is about the project's own deployment. It does not change what Opificia AI requires of other operators.
 
