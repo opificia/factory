@@ -67,10 +67,18 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
     continue
   fi
   author_email="$(git show -s --format='%ae' "$sha")"
-  signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
   summary="$(git show -s --format='%h %s' "$sha")"
-  if grep -qiF "<${author_email}>" <<< "$signoffs"; then
+  # Every line that reads as a sign-off counts, in the trailers or anywhere
+  # else in the message: commits reach main as they are (ADR-0012), and a
+  # line in someone else's name there reads as their certification.
+  signoffs="$(git show -s --format='%B' "$sha" | grep -iE '^[[:space:]]*signed-off-by[[:space:]]*:' || true)"
+  if [ -n "$signoffs" ] && ! grep -viqF "<${author_email}>" <<< "$signoffs"; then
     echo "ok      $summary"
+    continue
+  fi
+  if [ -n "$signoffs" ] && grep -qiF "<${author_email}>" <<< "$signoffs"; then
+    echo "missing $summary (it also carries a sign-off for someone other than its author; each person signs off their own commits)"
+    missing=1
     continue
   fi
   if [ "$same_repo" -eq 1 ] && [ "$approvers_loaded" -eq 0 ]; then

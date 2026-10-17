@@ -27,11 +27,12 @@ A merge commit keeps the commits of the branch as they are, and joins them to `m
 We choose option 3. Everything in ADR-0011 stands, except that the merge is a merge commit:
 
 1. A maintainer approves the head of the pull request with `/signoff`, as before.
-2. The DCO check accepts a commit without a sign-off when a maintainer's latest review approves the head with `/signoff`, the commit is by that maintainer or by the bot that opened the pull request, the branch is in this repository, and the commit carries no `Signed-off-by` line at all. A commit with someone else's sign-off line would reach `main` as it is, with a certification nobody gave, so the exception does not cover it. Commits by anyone else still need their author's own sign-off.
-3. The `Sign-off` workflow runs the DCO check again, reads the sign-offs again before each attempt, and merges the approved head with a merge commit:
+2. Commits reach `main` as they are, so every line in a commit message that reads as a sign-off, in the trailers or anywhere else, must name the commit's author. A sign-off in anyone else's name fails the DCO check: each person signs off their own commits.
+3. The DCO check accepts a commit without a sign-off when a maintainer's latest review approves the head with `/signoff`, the commit is by that maintainer or by the bot that opened the pull request, the branch is in this repository, and the commit carries no `Signed-off-by` line at all. A commit with someone else's sign-off line would reach `main` as it is, with a certification nobody gave, so the exception does not cover it. Commits by anyone else still need their author's own sign-off.
+4. The `Sign-off` workflow runs the DCO check again, reads the sign-offs again before each attempt, and merges the approved head with a merge commit:
    - titled with the pull request's title and number, such as `feat: add the chart (#50)`, so that `git log --first-parent main` reads as a list of changes, one line each, as it did with squash merges;
    - with a `Signed-off-by` line for every maintainer whose sign-off stands at that moment.
-4. Maintainers who merge by hand use a merge commit too. Squash and rebase merges are turned off in the repository settings.
+5. Maintainers who merge by hand use a merge commit too. Squash and rebase merges are turned off in the repository settings.
 
 ### Reasons
 
@@ -46,6 +47,7 @@ We choose option 3. Everything in ADR-0011 stands, except that the merge is a me
 - A commit without its author's sign-off can now be on `main`. It is covered by the `Signed-off-by` line in the merge commit that brought it in, and the DCO check let it through only because a listed maintainer approved that exact head with `/signoff`. To check a commit's certification, look at its own trailers, then at the merge commit that brought it in (`git log --ancestry-path --merges <commit>..main`).
 - To undo a pull request, revert its merge commit (`git revert -m 1`).
 - The default branch must allow merge commits, so it cannot require a linear history.
+- A maintainer can withdraw their sign-off in the moment between the workflow reading the reviews and GitHub merging, because GitHub cannot make a merge depend on a particular review. A branch rule that requires an approving review stops the merge only when that was the last approval. The workflow therefore reads the sign-offs again after the merge and fails, naming the maintainer, if one was withdrawn in that moment, so that the maintainers can decide whether to revert.
 - Pull requests that change `.github/workflows/` are still signed off in a terminal and merged by hand, now with a merge commit.
 
 ### Sovereignty impact
