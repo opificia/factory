@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: The Opificia Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# The DCO check of pull requests (ADR-0006). The job name is the check name
+# The DCO check of pull requests (ADR-0011). The job name is the check name
 # that the branch rules require; keep it stable.
 #
 # It runs on pull_request_target, so GitHub always takes this workflow and the

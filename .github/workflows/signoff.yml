@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: The Opificia Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# Second half of sign-off by approval (ADR-0006). It runs from the default
+# Second half of sign-off at the merge (ADR-0011). It runs from the default
 # branch after the Sign-off request workflow, so a pull request cannot change
 # it. It finds an approving review with "/signoff" by a maintainer on the
-# current head, adds that maintainer's sign-off to the commits and pushes them
-# as the Opificia bot. See .github/scripts/signoff.sh.
+# current head, runs the DCO check again, and squash-merges the approved head
+# as the Opificia bot, with the maintainer's Signed-off-by line in the squash
+# commit. It never rewrites the branch. See .github/scripts/signoff.sh.
 #
 # Needs the repository variable OPIFICIA_BOT_APP_ID and the secret
 # OPIFICIA_BOT_PRIVATE_KEY, for a GitHub App installed only on this repository
@@ -25,17 +26,23 @@ concurrency:
 
 jobs:
   signoff:
-    name: Record a maintainer's sign-off
+    name: Sign off and merge
     if: >-
       github.event.workflow_run.event == 'pull_request_review' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    # Long enough for the required checks of the pull request to finish.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+      # To run the DCO check again, now that the approval exists.
+      actions: write
     steps:
       - name: Check out the default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
       - name: Read the maintainers
         run: .github/scripts/maintainers.sh MAINTAINERS.md > "$RUNNER_TEMP/maintainers.tsv"
@@ -46,6 +53,12 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MAINTAINERS_FILE: ${{ runner.temp }}/maintainers.tsv
         run: .github/scripts/signoff.sh find
+      - name: Run the DCO check again
+        if: steps.review.outputs.login != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: .github/scripts/signoff.sh recheck
       - name: Get a token for the Opificia bot
         id: token
         if: steps.review.outputs.login != ''
@@ -53,14 +66,13 @@ jobs:
           APP_ID: ${{ vars.OPIFICIA_BOT_APP_ID }}
           PRIVATE_KEY: ${{ secrets.OPIFICIA_BOT_PRIVATE_KEY }}
         run: .github/scripts/signoff.sh token
-      - name: Sign off and push
+      - name: Merge with the sign-off
         if: steps.review.outputs.login != ''
         env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
           LOGIN: ${{ steps.review.outputs.login }}
-          BRANCH: ${{ steps.review.outputs.branch }}
-          BASE: ${{ steps.review.outputs.base }}
-          BOT_EMAIL: ${{ steps.review.outputs.bot_email }}
+          NUMBER: ${{ steps.review.outputs.number }}
+          TITLE: ${{ steps.review.outputs.title }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MAINTAINERS_FILE: ${{ runner.temp }}/maintainers.tsv
-          PUSH_URL: https://x-access-token:${{ steps.token.outputs.token }}@github.com/${{ github.repository }}.git
-        run: .github/scripts/signoff.sh apply
+        run: .github/scripts/signoff.sh merge

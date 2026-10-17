@@ -4,7 +4,7 @@ This file lists the maintainers of Opificia AI, their affiliation and the areas 
 
 Affiliation is the organisation that employs or pays the maintainer for their work on Opificia, or "Independent". Maintainers keep it up to date.
 
-The email address is the one a maintainer signs off with. The sign-off workflow uses it when a maintainer approves a pull request with `/signoff` ([ADR-0006](docs/adr/0006-sign-off-by-approval.md)).
+The email address is the one a maintainer signs off with. The sign-off workflow puts it in the squash commit when a maintainer approves a pull request with `/signoff` ([ADR-0011](docs/adr/0011-sign-off-at-the-merge.md)).
 
 ## Active maintainers
 

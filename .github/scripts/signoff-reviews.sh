@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: CC0-1.0
 #
 # Prints "login commit" for every reviewer of a pull request whose latest
-# review is an approval with a line that reads "/signoff" (ADR-0006). A later
+# review is an approval with a line that reads "/signoff" (ADR-0011). A later
 # request for changes, a dismissal or an approval without "/signoff" replaces
 # an earlier sign-off. Comments do not change it.
 #

@@ -24,7 +24,7 @@ Opificia is an open-source software factory: agents turn tickets into reviewed, 
 
 ## Rules
 
-1. **Sign-off is human-only.** Never add a `Signed-off-by` line yourself, and never run `git commit -s` on behalf of a person. The human who submits the change signs off: in a terminal before the push, or as a maintainer by approving the pull request with `/signoff` ([ADR-0006](docs/adr/0006-sign-off-by-approval.md)). With the second way, you may push unsigned commits and open the pull request; the DCO check stays red until a maintainer signs off.
+1. **Sign-off is human-only.** Never add a `Signed-off-by` line yourself, and never run `git commit -s` on behalf of a person. The human who submits the change signs off: in a terminal before the push, or as a maintainer by approving the pull request with `/signoff`, which merges it with their sign-off in the squash commit ([ADR-0011](docs/adr/0011-sign-off-at-the-merge.md)). With the second way, you may push unsigned commits and open the pull request; the DCO check stays red until a maintainer approves with `/signoff`.
 2. **Disclose yourself.** Add an `Assisted-by: <tool>/<model>` trailer to every commit you write or substantially change.
 3. **Never commit secrets.** No tokens, keys, passwords or private URLs, not even in examples or tests. Use obvious placeholders.
 4. **Respect folder licences.** The core is AGPL-3.0-only; `sdk/`, `plugins/` and `examples/` are Apache-2.0; `docs/` is CC-BY-4.0. Do not move code between them, and do not add code copied from elsewhere unless its licence is compatible and recorded.

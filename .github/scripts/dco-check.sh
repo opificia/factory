@@ -3,12 +3,14 @@
 # SPDX-License-Identifier: CC0-1.0
 #
 # The DCO check of a pull request. Every commit needs a Signed-off-by line
-# that matches its author. When a GitHub App bot opened the pull request, a
-# commit by that bot may carry a maintainer's sign-off instead (ADR-0006), but
-# only if that maintainer approved the pull request with "/signoff" on a
-# commit with the same tree. Anyone can type a Signed-off-by line or an author
-# email, so neither proves anything alone: the bot is the one GitHub names as
-# the author of the pull request.
+# that matches its author, with one exception (ADR-0011): a commit without a
+# sign-off passes when a maintainer approved the head of the pull request with
+# "/signoff", and the commit is by that maintainer or by the bot that opened
+# the pull request. The Sign-off workflow then merges the pull request with
+# the maintainer's Signed-off-by line in the squash commit. Anyone can type an
+# author email, so an email alone proves nothing: the bot is the one GitHub
+# names as the author of the pull request, and the approval comes from the
+# GitHub API.
 #
 # Needs BASE_SHA, HEAD_SHA, PR_NUMBER, GITHUB_REPOSITORY and GH_TOKEN, and a
 # clone with both commits. The maintainers come from the base branch, and the
@@ -32,21 +34,19 @@ is_bot_commit() {
   [ -n "$bot_id" ] && tr '[:upper:]' '[:lower:]' <<< "$1" | grep -qE "^${bot_id}\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$"
 }
 
-# Emails of maintainers who approved with /signoff on a commit whose tree is
-# the tree of the head. Computed only when a bot commit needs it.
-approved_signers() {
-  local head_tree login commit_id
-  head_tree="$(git rev-parse "${HEAD_SHA}^{tree}")"
+# Emails of the maintainers whose latest review approves the head commit
+# itself with "/signoff", one "<email>" per line, in lower case. Computed only
+# when a commit needs it.
+approvers() {
   "$here/signoff-reviews.sh" "$GITHUB_REPOSITORY" "$PR_NUMBER" |
     while read -r login commit_id; do
-      awk -F '\t' -v h="$login" '$1 == h { found = 1 } END { exit !found }' "$work/maintainers" || continue
-      [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$commit_id" --jq .commit.tree.sha)" = "$head_tree" ] || continue
-      awk -F '\t' -v h="$login" '$1 == h { print "<" $3 ">" }' "$work/maintainers"
+      [ "$commit_id" = "$HEAD_SHA" ] || continue
+      awk -F '\t' -v h="$login" '$1 == h { print "<" tolower($3) ">" }' "$work/maintainers"
     done
 }
 
 missing=0
-signers_loaded=0
+approvers_loaded=0
 for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
   # A merge needs no sign-off only if it adds nothing: its tree must be what
   # git merges on its own. Otherwise it is checked like any other commit,
@@ -65,13 +65,17 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
     echo "ok      $summary"
     continue
   fi
-  if is_bot_commit "$author_email"; then
-    if [ "$signers_loaded" -eq 0 ]; then
-      approved_signers > "$work/signers"
-      signers_loaded=1
+  if [ "$approvers_loaded" -eq 0 ]; then
+    approvers > "$work/approvers"
+    approvers_loaded=1
+  fi
+  if [ -s "$work/approvers" ]; then
+    if is_bot_commit "$author_email"; then
+      echo "ok      $summary (by the bot that opened the pull request; a maintainer approved it with /signoff and signs off at the merge)"
+      continue
     fi
-    if [ -s "$work/signers" ] && grep -qiFf "$work/signers" <<< "$signoffs"; then
-      echo "ok      $summary (by the bot that opened the pull request, signed off by a maintainer who approved with /signoff)"
+    if grep -qxF "<$(tr '[:upper:]' '[:lower:]' <<< "$author_email")>" "$work/approvers"; then
+      echo "ok      $summary (by a maintainer who approved it with /signoff and signs off at the merge)"
       continue
     fi
   fi
@@ -82,7 +86,8 @@ done
 if [ "$missing" -ne 0 ]; then
   echo
   echo "Some commits lack a Signed-off-by line matching the commit author's email."
-  echo "See CONTRIBUTING.md, section 'How to fix a missing sign-off'. A maintainer can also"
-  echo "sign off by approving the pull request with /signoff in the review."
+  echo "See CONTRIBUTING.md, section 'How to fix a missing sign-off'. For commits by the bot"
+  echo "that opened the pull request, or by a maintainer, that maintainer can instead approve"
+  echo "the head of the pull request with /signoff in the review, which signs off at the merge."
   exit 1
 fi

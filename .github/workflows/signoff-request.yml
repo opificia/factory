@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: The Opificia Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# First half of sign-off by approval (ADR-0006). A review event runs the
+# First half of sign-off at the merge (ADR-0011). A review event runs the
 # workflow from the pull request, so this half has no secrets and does no
 # work. When it completes, the Sign-off workflow runs from the default branch
 # and checks the review through the GitHub API.

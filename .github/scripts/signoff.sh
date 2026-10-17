@@ -2,14 +2,19 @@
 # SPDX-FileCopyrightText: The Opificia Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# Records a maintainer's sign-off on a pull request branch (ADR-0006).
+# Signs off a pull request at the merge (ADR-0011). An approving review with
+# "/signoff" by a maintainer on the head of the pull request is the sign-off;
+# this script merges the pull request with the maintainer's Signed-off-by line
+# in the squash commit. It never rewrites the branch.
 #
-#   signoff.sh token   Gets a token for the Opificia bot, limited to this
-#                      repository and to writing contents.
-#   signoff.sh find    Finds the pull request and a maintainer whose latest
-#                      review approves the current head commit with "/signoff".
-#   signoff.sh apply   Adds the maintainer's sign-off to the commits, checks
-#                      that the tree is unchanged, and pushes.
+#   signoff.sh find      Finds the pull request and a maintainer whose latest
+#                        review approves the current head with "/signoff".
+#   signoff.sh token     Gets a token for the Opificia bot, limited to this
+#                        repository and to writing contents.
+#   signoff.sh recheck   Runs the DCO check again, now that the approval
+#                        exists, and waits for it to pass.
+#   signoff.sh merge     Squash-merges the approved head, with the sign-off,
+#                        once the required checks pass.
 #
 # The Sign-off workflow runs this script from the default branch, never from
 # the pull request. Every fact comes from the GitHub API or from git, not from
@@ -22,6 +27,10 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 die() { echo "::error::$*" >&2; exit 1; }
 note() { echo "::notice::$*"; }
 output() { echo "$1=$2" >> "${GITHUB_OUTPUT:-/dev/null}"; }
+
+# How long to wait for the DCO check and the other required checks.
+WAIT_SECONDS="${WAIT_SECONDS:-1800}"
+POLL_SECONDS="${POLL_SECONDS:-20}"
 
 # --- token ------------------------------------------------------------------
 # Needs APP_ID and PRIVATE_KEY. Signs a JWT with openssl, so no extra Action.
@@ -50,17 +59,17 @@ token() {
 # --- find -------------------------------------------------------------------
 # Needs GH_TOKEN (read access), HEAD_SHA and MAINTAINERS_FILE.
 find_review() {
-  local pr reviews login
+  local pr number reviews login=""
   pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" --jq \
     "[.[] | select(.state == \"open\" and .head.sha == \"$HEAD_SHA\" and .head.repo.full_name == \"$GITHUB_REPOSITORY\")][0] // empty")"
   if [ -z "$pr" ]; then
     note "No open pull request from this repository has $HEAD_SHA as its head. Nothing to do."
     return 0
   fi
+  number="$(jq -r .number <<< "$pr")"
   # Approvals on exactly this commit, with a line that reads "/signoff".
   # Each reviewer's latest review counts, and it must be on this exact commit.
-  reviews="$("$here/signoff-reviews.sh" "$GITHUB_REPOSITORY" "$(jq -r .number <<< "$pr")")"
-  login=""
+  reviews="$("$here/signoff-reviews.sh" "$GITHUB_REPOSITORY" "$number")"
   while read -r candidate commit_id; do
     [ -n "$candidate" ] && [ "$commit_id" = "$HEAD_SHA" ] || continue
     if cut -f1 "$MAINTAINERS_FILE" | grep -qxF "$candidate"; then login="$candidate"; fi
@@ -69,86 +78,101 @@ find_review() {
     note "No approving review with /signoff by a maintainer on $HEAD_SHA. Nothing to do."
     return 0
   fi
-  # The bot force-pushes the head branch, so it must be an ordinary work
-  # branch: never the default branch, and not covered by any branch rule.
-  # Only pull requests into the default branch qualify.
-  local branch base default rules
-  branch="$(jq -r .head.ref <<< "$pr")"
+  local base default
   base="$(jq -r .base.ref <<< "$pr")"
   default="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
-  [ "$base" = "$default" ] || die "Sign-off by approval works only for pull requests into $default."
-  [ "$branch" != "$default" ] || die "The head branch is $default. It cannot be rewritten."
-  rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$branch" --jq 'length')"
-  [ "$rules" = 0 ] || die "Branch rules apply to $branch, so the bot will not rewrite it. Sign off in a terminal."
+  if [ "$base" != "$default" ]; then
+    note "Pull request #$number goes into $base, not $default. It is merged once it goes into $default; approve it again then."
+    return 0
+  fi
+  # The bot's token cannot write workflows, so it cannot merge changes to them.
+  if gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$number/files" --jq '.[].filename' | grep -q '^\.github/workflows/'; then
+    die "Pull request #$number changes .github/workflows/, which the bot may not merge. Sign off in a terminal (git signoff && git push --force-with-lease) and merge it yourself."
+  fi
   output login "$login"
-  output branch "$branch"
-  output base "$base"
-  output number "$(jq -r .number <<< "$pr")"
-  # The bot that opened the pull request, if a bot did. Only its commits may
-  # receive a maintainer's sign-off, apart from the maintainer's own.
-  output bot_email "$(jq -r 'select(.user.type == "Bot") | "\(.user.id)+\(.user.login)@users.noreply.github.com" | ascii_downcase' <<< "$pr")"
+  output number "$number"
+  output title "$(jq -r .title <<< "$pr")"
 }
 
-# --- apply ------------------------------------------------------------------
-# Needs LOGIN, BRANCH, BASE, HEAD_SHA, MAINTAINERS_FILE and PUSH_URL, and
-# BOT_EMAIL when a bot opened the pull request. Runs in a clone where the
-# branch and the base can be fetched from "origin".
-apply() {
-  local name email base_sha new_head
-  : "${LOGIN:?}" "${BRANCH:?}" "${BASE:?}" "${HEAD_SHA:?}" "${MAINTAINERS_FILE:?}" "${PUSH_URL:?}"
+# --- recheck ----------------------------------------------------------------
+# Needs GH_TOKEN with "actions: write", and HEAD_SHA. The DCO check ran before
+# the approval existed; a new run sees it. The run uses the workflow and the
+# script from the default branch, as every DCO run does.
+recheck() {
+  local run deadline status conclusion
+  deadline=$(( $(date +%s) + WAIT_SECONDS ))
+  run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/dco.yml/runs?head_sha=$HEAD_SHA&event=pull_request_target&per_page=1" --jq '.workflow_runs[0].id // empty')"
+  [ -n "$run" ] || die "No DCO run found for $HEAD_SHA."
+  while :; do
+    read -r status conclusion <<< "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '"\(.status) \(.conclusion)"')"
+    [ "$status" = completed ] && break
+    [ "$(date +%s)" -lt "$deadline" ] || die "The DCO run $run did not finish in time."
+    sleep "$POLL_SECONDS"
+  done
+  if [ "$conclusion" != success ]; then
+    gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/rerun" > /dev/null
+    sleep "$POLL_SECONDS"
+    while :; do
+      read -r status conclusion <<< "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '"\(.status) \(.conclusion)"')"
+      [ "$status" = completed ] && break
+      [ "$(date +%s)" -lt "$deadline" ] || die "The DCO run $run did not finish in time."
+      sleep "$POLL_SECONDS"
+    done
+  fi
+  [ "$conclusion" = success ] || die "The DCO check still fails on $HEAD_SHA. See run $run: some commits need their author's own sign-off."
+  note "The DCO check passes on $HEAD_SHA."
+}
+
+# --- merge ------------------------------------------------------------------
+# The squash commit's message: the subjects of the commits, then their
+# Assisted-by, Co-authored-by and Signed-off-by lines, then the sign-off of
+# the maintainer who approved. Reads the commit messages, base64-encoded, one
+# per line, on standard input.
+squash_message() {
+  local name="$1" email="$2" encoded message subjects="" trailers=""
+  while read -r encoded; do
+    [ -n "$encoded" ] || continue
+    message="$(base64 -d <<< "$encoded")"
+    subjects+="* $(head -n 1 <<< "$message")"$'\n'
+    trailers+="$(git interpret-trailers --parse <<< "$message" | grep -iE '^(Assisted-by|Co-authored-by|Signed-off-by): ' || true)"$'\n'
+  done
+  trailers+="Signed-off-by: $name <$email>"
+  printf '%s\n%s\n' "$subjects" "$(grep -v '^$' <<< "$trailers" | awk '!seen[tolower($0)]++')"
+}
+
+# Needs GH_TOKEN (the bot's token), LOGIN, NUMBER, TITLE, HEAD_SHA and
+# MAINTAINERS_FILE. GitHub merges only if the head is still the approved
+# commit ("sha") and the branch rules are met, such as the required checks.
+merge() {
+  : "${LOGIN:?}" "${NUMBER:?}" "${TITLE:?}" "${HEAD_SHA:?}" "${MAINTAINERS_FILE:?}"
+  local name email message deadline result
   name="$(awk -F '\t' -v h="$LOGIN" '$1 == h { print $2 }' "$MAINTAINERS_FILE")"
   email="$(awk -F '\t' -v h="$LOGIN" '$1 == h { print $3 }' "$MAINTAINERS_FILE")"
   [ -n "$name" ] && [ -n "$email" ] || die "$LOGIN is not a maintainer with an email address in MAINTAINERS.md."
+  message="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" --jq '.[].commit.message | @base64' | squash_message "$name" "$email")"
 
-  git fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" "+refs/heads/$BASE:refs/remotes/origin/$BASE"
-  [ "$(git rev-parse "origin/$BRANCH")" = "$HEAD_SHA" ] || die "The branch moved after the approval. Approve the new head again."
-  git checkout --quiet --detach "$HEAD_SHA"
-  base_sha="$(git merge-base HEAD "origin/$BASE")"
-
-  [ -z "$(git rev-list --merges "$base_sha..HEAD")" ] || die "The branch contains merge commits. Rebase it on $BASE first."
-  if git diff --name-only "$base_sha" HEAD | grep -q '^\.github/workflows/'; then
-    die "The branch changes workflows, which the bot may not push. Sign off in a terminal: git signoff && git push --force-with-lease"
-  fi
-
-  # Only commits by the bot that opened the pull request or by the approving
-  # maintainer may receive this maintainer's sign-off. Anyone else certifies
-  # their own commits. An author email alone proves nothing, so a bot email
-  # counts only when that bot is the author of the pull request.
-  local sha author signoffs pending=0 lower bot_id=""
-  # Only the bot's user ID counts, because the login in its noreply address
-  # changes when someone renames the App.
-  [[ "${BOT_EMAIL:-}" =~ ^([0-9]+)\+ ]] && bot_id="${BASH_REMATCH[1]}"
-  for sha in $(git rev-list "$base_sha..HEAD"); do
-    author="$(git show -s --format='%ae' "$sha")"
-    signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
-    grep -qiF "<$author>" <<< "$signoffs" && continue
-    grep -qiF "<$email>" <<< "$signoffs" && continue
-    lower="$(tr '[:upper:]' '[:lower:]' <<< "$author")"
-    if { [ -n "$bot_id" ] && grep -qE "^${bot_id}\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$" <<< "$lower"; } ||
-      [ "$lower" = "$(tr '[:upper:]' '[:lower:]' <<< "$email")" ]; then
-      pending=1
-    else
-      die "Commit $(git show -s --format='%h' "$sha") is by $author, who must sign it off themselves."
+  deadline=$(( $(date +%s) + WAIT_SECONDS ))
+  while :; do
+    if result="$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/merge" \
+      -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$TITLE (#$NUMBER)" -f commit_message="$message" \
+      --jq .sha 2>&1)"; then
+      note "Merged #$NUMBER as $result, signed off by $name."
+      return 0
     fi
+    # 409: the head moved after the approval. Anything but 405 will not change by waiting.
+    grep -q 'HTTP 409' <<< "$result" && die "The head of #$NUMBER moved after the approval. Approve the new head again."
+    grep -q 'HTTP 405' <<< "$result" || die "GitHub refused to merge #$NUMBER: $result"
+    [ "$(date +%s)" -lt "$deadline" ] || die "#$NUMBER could not be merged in time: $result"
+    echo "Waiting for the required checks: $result"
+    sleep "$POLL_SECONDS"
   done
-  if [ "$pending" -eq 0 ]; then
-    note "Every commit is already signed off. Nothing to do."
-    return 0
-  fi
-
-  GIT_COMMITTER_NAME="$name" GIT_COMMITTER_EMAIL="$email" \
-    git -c user.name="$name" -c user.email="$email" rebase --quiet --signoff --force-rebase "$base_sha"
-  new_head="$(git rev-parse HEAD)"
-  [ "$(git rev-parse "$new_head^{tree}")" = "$(git rev-parse "$HEAD_SHA^{tree}")" ] || die "The tree changed while signing off. Nothing was pushed."
-
-  git push --quiet --force-with-lease="refs/heads/$BRANCH:$HEAD_SHA" "$PUSH_URL" "$new_head:refs/heads/$BRANCH"
-  output new_head "$new_head"
-  note "Signed off $BRANCH for $name. New head: $new_head."
 }
 
 case "${1:-}" in
-  token) token ;;
   find) find_review ;;
-  apply) apply ;;
-  *) die "usage: signoff.sh token|find|apply" ;;
+  token) token ;;
+  recheck) recheck ;;
+  merge) merge ;;
+  squash-message) squash_message "${2:?name}" "${3:?email}" ;;
+  *) die "usage: signoff.sh find|token|recheck|merge" ;;
 esac
