@@ -72,7 +72,6 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           LOGIN: ${{ steps.review.outputs.login }}
           NUMBER: ${{ steps.review.outputs.number }}
-          TITLE: ${{ steps.review.outputs.title }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MAINTAINERS_FILE: ${{ runner.temp }}/maintainers.tsv
         run: .github/scripts/signoff.sh merge

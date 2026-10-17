@@ -9,8 +9,10 @@
 # the pull request. The Sign-off workflow then merges the pull request with
 # the maintainer's Signed-off-by line in the squash commit. Anyone can type an
 # author email, so an email alone proves nothing: the bot is the one GitHub
-# names as the author of the pull request, and the approval comes from the
-# GitHub API.
+# names as the author of the pull request, the approval comes from the GitHub
+# API, and the exception holds only for branches in this repository, which
+# only people with write access can push. A fork could carry commits with a
+# maintainer's email that the maintainer never wrote.
 #
 # Needs BASE_SHA, HEAD_SHA, PR_NUMBER, GITHUB_REPOSITORY and GH_TOKEN, and a
 # clone with both commits. The maintainers come from the base branch, and the
@@ -28,8 +30,11 @@ git show "${BASE_SHA}:MAINTAINERS.md" | "$here/maintainers.sh" > "$work/maintain
 # The user ID of the bot that opened the pull request, or nothing when a
 # person opened it. Its commits carry the noreply address "<id>+<login>@...".
 # Only the ID counts, because the login changes when someone renames the App.
-bot_id="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'select(.user.type == "Bot") | .user.id')"
+pull="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+bot_id="$(jq -r 'select(.user.type == "Bot") | .user.id' <<< "$pull")"
 [[ "$bot_id" =~ ^[0-9]*$ ]] || bot_id=""
+same_repo=0
+[ "$(jq -r .head.repo.full_name <<< "$pull")" = "$GITHUB_REPOSITORY" ] && same_repo=1
 is_bot_commit() {
   [ -n "$bot_id" ] && tr '[:upper:]' '[:lower:]' <<< "$1" | grep -qE "^${bot_id}\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com$"
 }
@@ -65,11 +70,11 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
     echo "ok      $summary"
     continue
   fi
-  if [ "$approvers_loaded" -eq 0 ]; then
+  if [ "$same_repo" -eq 1 ] && [ "$approvers_loaded" -eq 0 ]; then
     approvers > "$work/approvers"
     approvers_loaded=1
   fi
-  if [ -s "$work/approvers" ]; then
+  if [ "$same_repo" -eq 1 ] && [ -s "$work/approvers" ]; then
     if is_bot_commit "$author_email"; then
       echo "ok      $summary (by the bot that opened the pull request; a maintainer approved it with /signoff and signs off at the merge)"
       continue

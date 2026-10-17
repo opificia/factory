@@ -28,10 +28,10 @@ The repository merges by squash only. Every change on `main` is one squash commi
 We choose option 3.
 
 1. A maintainer reviews the pull request and submits an approving review with a line that reads `/signoff`, as before.
-2. The DCO check accepts a commit without a sign-off when a maintainer's latest review approves the head of the pull request with `/signoff`, and the commit is by that maintainer or by the bot that opened the pull request. Commits by anyone else still need their author's own sign-off.
+2. The DCO check accepts a commit without a sign-off when a maintainer's latest review approves the head of the pull request with `/signoff`, the commit is by that maintainer or by the bot that opened the pull request, and the branch is in this repository. Commits by anyone else still need their author's own sign-off. Anyone can set a commit's author email, so the exception does not hold for forks: a fork could carry commits in a maintainer's name that the maintainer never wrote. Only people with write access can push branches to this repository.
 3. The `Sign-off` workflow runs the DCO check again, now that the approval exists. It then squash-merges the pull request through the GitHub API as the Opificia bot, with:
    - the head commit the maintainer approved as the expected head, so GitHub refuses the merge if anyone pushed after the approval;
-   - the subjects of the commits, their `Assisted-by`, `Co-authored-by` and `Signed-off-by` lines, and the maintainer's `Signed-off-by` line, with the name and email address in [`MAINTAINERS.md`](../../MAINTAINERS.md), in the squash commit's message.
+   - the subjects of the commits, their `Assisted-by` and `Co-authored-by` lines, the sign-offs their authors gave themselves, and the maintainer's `Signed-off-by` line, with the name and email address in [`MAINTAINERS.md`](../../MAINTAINERS.md), in the squash commit's message. A `Signed-off-by` line for anyone other than the commit's author is left out, because anyone can type one, and on `main` it would read as that person's certification.
 4. The merge waits for the required checks, as any merge does.
 
 Option 3 of ADR-0006 was close to this, and ADR-0006 rejected it because the maintainer had to type the sign-off line correctly at the merge, and nothing could check it before. Here the workflow writes the line, from the approval the check already verified.

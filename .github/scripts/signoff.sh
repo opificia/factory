@@ -89,9 +89,11 @@ find_review() {
   if gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$number/files" --jq '.[].filename' | grep -q '^\.github/workflows/'; then
     die "Pull request #$number changes .github/workflows/, which the bot may not merge. Sign off in a terminal (git signoff && git push --force-with-lease) and merge it yourself."
   fi
+  # Only values of a known shape go to GITHUB_OUTPUT: a newline in free text,
+  # such as a title, could add outputs of its own.
+  [[ "$login" =~ ^[a-z0-9-]+$ ]] && [[ "$number" =~ ^[0-9]+$ ]] || die "Unexpected reviewer or pull request number."
   output login "$login"
   output number "$number"
-  output title "$(jq -r .title <<< "$pr")"
 }
 
 # --- recheck ----------------------------------------------------------------
@@ -125,36 +127,47 @@ recheck() {
 
 # --- merge ------------------------------------------------------------------
 # The squash commit's message: the subjects of the commits, then their
-# Assisted-by, Co-authored-by and Signed-off-by lines, then the sign-off of
-# the maintainer who approved. Reads the commit messages, base64-encoded, one
-# per line, on standard input.
+# Assisted-by and Co-authored-by lines, the sign-offs their authors gave
+# themselves, and the sign-off of the maintainer who approved. A Signed-off-by
+# line for anyone but the commit's author is dropped: anyone can type one, and
+# on main it would read as that person's certification. Reads one line per
+# commit on standard input: the author's email and the message, both
+# base64-encoded, separated by a space.
 squash_message() {
-  local name="$1" email="$2" encoded message subjects="" trailers=""
-  while read -r encoded; do
+  local name="$1" email="$2" encoded_email encoded message author subjects="" trailers="" line
+  while read -r encoded_email encoded; do
     [ -n "$encoded" ] || continue
+    author="$(base64 -d <<< "$encoded_email" | tr '[:upper:]' '[:lower:]')"
     message="$(base64 -d <<< "$encoded")"
     subjects+="* $(head -n 1 <<< "$message")"$'\n'
-    trailers+="$(git interpret-trailers --parse <<< "$message" | grep -iE '^(Assisted-by|Co-authored-by|Signed-off-by): ' || true)"$'\n'
+    while IFS= read -r line; do
+      case "$(tr '[:upper:]' '[:lower:]' <<< "$line")" in
+        assisted-by:* | co-authored-by:*) trailers+="$line"$'\n' ;;
+        signed-off-by:*"<$author>") trailers+="$line"$'\n' ;;
+      esac
+    done < <(git interpret-trailers --parse <<< "$message")
   done
   trailers+="Signed-off-by: $name <$email>"
   printf '%s\n%s\n' "$subjects" "$(grep -v '^$' <<< "$trailers" | awk '!seen[tolower($0)]++')"
 }
 
-# Needs GH_TOKEN (the bot's token), LOGIN, NUMBER, TITLE, HEAD_SHA and
+# Needs GH_TOKEN (the bot's token), LOGIN, NUMBER, HEAD_SHA and
 # MAINTAINERS_FILE. GitHub merges only if the head is still the approved
 # commit ("sha") and the branch rules are met, such as the required checks.
 merge() {
-  : "${LOGIN:?}" "${NUMBER:?}" "${TITLE:?}" "${HEAD_SHA:?}" "${MAINTAINERS_FILE:?}"
-  local name email message deadline result
+  : "${LOGIN:?}" "${NUMBER:?}" "${HEAD_SHA:?}" "${MAINTAINERS_FILE:?}"
+  local name email message deadline result title
   name="$(awk -F '\t' -v h="$LOGIN" '$1 == h { print $2 }' "$MAINTAINERS_FILE")"
   email="$(awk -F '\t' -v h="$LOGIN" '$1 == h { print $3 }' "$MAINTAINERS_FILE")"
   [ -n "$name" ] && [ -n "$email" ] || die "$LOGIN is not a maintainer with an email address in MAINTAINERS.md."
-  message="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" --jq '.[].commit.message | @base64' | squash_message "$name" "$email")"
+  title="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq .title)"
+  message="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" \
+    --jq '.[] | "\(.commit.author.email | @base64) \(.commit.message | @base64)"' | squash_message "$name" "$email")"
 
   deadline=$(( $(date +%s) + WAIT_SECONDS ))
   while :; do
     if result="$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/merge" \
-      -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$TITLE (#$NUMBER)" -f commit_message="$message" \
+      -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$title (#$NUMBER)" -f commit_message="$message" \
       --jq .sha 2>&1)"; then
       note "Merged #$NUMBER as $result, signed off by $name."
       return 0
