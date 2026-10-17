@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: The Opificia Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# Signs off a pull request at the merge (ADR-0011). An approving review with
-# "/signoff" by a maintainer on the head of the pull request is the sign-off;
-# this script merges the pull request with the maintainer's Signed-off-by line
-# in the squash commit. It never rewrites the branch.
+# Signs off a pull request at the merge (ADR-0011, ADR-0012). An approving
+# review with "/signoff" by a maintainer on the head of the pull request is
+# the sign-off; this script merges the pull request with a merge commit that
+# carries the maintainer's Signed-off-by line. It never rewrites the branch.
 #
 #   signoff.sh find      Finds the pull request and the maintainers whose latest
 #                        review approves the current head with "/signoff".
@@ -13,8 +13,8 @@
 #                        repository and to writing contents.
 #   signoff.sh recheck   Runs the DCO check again, now that the approval
 #                        exists, and waits for it to pass.
-#   signoff.sh merge     Squash-merges the approved head, with the sign-off,
-#                        once the required checks pass.
+#   signoff.sh merge     Merges the approved head with a merge commit that
+#                        carries the sign-off, once the required checks pass.
 #
 # The Sign-off workflow runs this script from the default branch, never from
 # the pull request. Every fact comes from the GitHub API or from git, not from
@@ -141,30 +141,12 @@ recheck() {
 }
 
 # --- merge ------------------------------------------------------------------
-# The squash commit's message: the subjects of the commits, then their
-# Assisted-by and Co-authored-by lines, the sign-offs their authors gave
-# themselves, and the sign-offs of the maintainers who approved, given as
-# arguments ("Name <email>"). A Signed-off-by
-# line for anyone but the commit's author is dropped: anyone can type one, and
-# on main it would read as that person's certification. Reads one line per
-# commit on standard input: the author's email and the message, both
-# base64-encoded, separated by a space.
-squash_message() {
-  local encoded_email encoded message author subjects="" trailers="" line signer
-  while read -r encoded_email encoded; do
-    [ -n "$encoded" ] || continue
-    author="$(base64 -d <<< "$encoded_email" | tr '[:upper:]' '[:lower:]')"
-    message="$(base64 -d <<< "$encoded")"
-    subjects+="* $(head -n 1 <<< "$message")"$'\n'
-    while IFS= read -r line; do
-      case "$(tr '[:upper:]' '[:lower:]' <<< "$line")" in
-        assisted-by:* | co-authored-by:*) trailers+="$line"$'\n' ;;
-        signed-off-by:*"<$author>") trailers+="$line"$'\n' ;;
-      esac
-    done < <(git interpret-trailers --parse <<< "$message")
-  done
-  for signer in "$@"; do trailers+="Signed-off-by: $signer"$'\n'; done
-  printf '%s\n%s\n' "$subjects" "$(grep -v '^$' <<< "$trailers" | awk '!seen[tolower($0)]++')"
+# The merge commit's message: a Signed-off-by line for each maintainer who
+# approved, given as arguments ("Name <email>"). With it, they certify every
+# commit the merge brings in that its author did not sign off (ADR-0012).
+merge_message() {
+  local signer
+  for signer in "$@"; do printf 'Signed-off-by: %s\n' "$signer"; done
 }
 
 # Needs GH_TOKEN (the bot's token), NUMBER, HEAD_SHA, DEADLINE and
@@ -183,10 +165,8 @@ squash_message() {
 # commit ("sha") and the branch rules are met, such as the required checks.
 merge() {
   : "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
-  local login logins name email message deadline="$DEADLINE" result title commits signers names
+  local login logins name email message deadline="$DEADLINE" result title signers names
   title="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq .title)"
-  commits="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" \
-    --jq '.[] | "\(.commit.author.email | @base64) \(.commit.message | @base64)"')"
 
   while :; do
     logins="$(signers "$NUMBER")"
@@ -200,9 +180,11 @@ merge() {
       signers+=("$name <$email>")
       names+=("$name")
     done
-    message="$(squash_message "${signers[@]}" <<< "$commits")"
+    message="$(merge_message "${signers[@]}")"
+    # The title is the pull request's, so `git log --first-parent` reads like
+    # a list of the changes, one line each.
     if result="$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/merge" \
-      -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$title (#$NUMBER)" -f commit_message="$message" \
+      -f merge_method=merge -f sha="$HEAD_SHA" -f commit_title="$title (#$NUMBER)" -f commit_message="$message" \
       --jq .sha 2>&1)"; then
       note "Merged #$NUMBER as $result, signed off by ${names[*]}."
       check_after_merge "$logins" "$result"
@@ -238,6 +220,6 @@ case "${1:-}" in
   token) token ;;
   recheck) recheck ;;
   merge) merge ;;
-  squash-message) shift; squash_message "$@" ;;
+  merge-message) shift; merge_message "$@" ;;
   *) die "usage: signoff.sh find|token|recheck|merge" ;;
 esac

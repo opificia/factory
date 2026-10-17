@@ -7,7 +7,7 @@
 #   Link check         links in Markdown files (.lychee.toml). Links inside the
 #                      repository always; external links only in changed files on
 #                      pull requests and pushes, and in every file weekly
-#   Pull request title Conventional Commits, since squash merges use the title
+#   Pull request title Conventional Commits, since merge commits use the title
 #
 # Scorecard, Labels and Website stay in their own workflows: they run on other
 # triggers and need write permissions or secrets that these checks do not. The

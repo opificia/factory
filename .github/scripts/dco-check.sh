@@ -6,8 +6,11 @@
 # that matches its author, with one exception (ADR-0011): a commit without a
 # sign-off passes when a maintainer approved the head of the pull request with
 # "/signoff", and the commit is by that maintainer or by the bot that opened
-# the pull request. The Sign-off workflow then merges the pull request with
-# the maintainer's Signed-off-by line in the squash commit. Anyone can type an
+# the pull request, and carries no Signed-off-by line of its own. The Sign-off
+# workflow then merges the pull request with a merge commit that carries the
+# maintainer's Signed-off-by line, which certifies such commits (ADR-0012).
+# A commit that carries someone else's Signed-off-by line would land on main
+# with a certification nobody gave, so the exception does not cover it. Anyone can type an
 # author email, so an email alone proves nothing: the bot is the one GitHub
 # names as the author of the pull request, the approval comes from the GitHub
 # API, and the exception holds only for branches in this repository, which
@@ -74,13 +77,13 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
     approvers > "$work/approvers"
     approvers_loaded=1
   fi
-  if [ "$same_repo" -eq 1 ] && [ -s "$work/approvers" ]; then
+  if [ "$same_repo" -eq 1 ] && [ -s "$work/approvers" ] && [ -z "$signoffs" ]; then
     if is_bot_commit "$author_email"; then
-      echo "ok      $summary (by the bot that opened the pull request; a maintainer approved it with /signoff and signs off at the merge)"
+      echo "ok      $summary (by the bot that opened the pull request; a maintainer approved it with /signoff and signs off in the merge commit)"
       continue
     fi
     if grep -qxF "<$(tr '[:upper:]' '[:lower:]' <<< "$author_email")>" "$work/approvers"; then
-      echo "ok      $summary (by a maintainer who approved it with /signoff and signs off at the merge)"
+      echo "ok      $summary (by a maintainer who approved it with /signoff and signs off in the merge commit)"
       continue
     fi
   fi
@@ -93,6 +96,7 @@ if [ "$missing" -ne 0 ]; then
   echo "Some commits lack a Signed-off-by line matching the commit author's email."
   echo "See CONTRIBUTING.md, section 'How to fix a missing sign-off'. For commits by the bot"
   echo "that opened the pull request, or by a maintainer, that maintainer can instead approve"
-  echo "the head of the pull request with /signoff in the review, which signs off at the merge."
+  echo "the head of the pull request with /signoff in the review, which signs off in the merge"
+  echo "commit. Such commits must not carry a Signed-off-by line of their own."
   exit 1
 fi

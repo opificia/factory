@@ -101,16 +101,16 @@ If an AI agent writes commits for you, it never signs them off (see [AI-assisted
 
 ### Sign off at the merge
 
-Maintainers sign off a pull request by approving it ([ADR-0011](docs/adr/0011-sign-off-at-the-merge.md)). This is how changes written by the Opificia bot or by an agent get their sign-off:
+Maintainers sign off a pull request by approving it ([ADR-0011](docs/adr/0011-sign-off-at-the-merge.md), [ADR-0012](docs/adr/0012-merge-with-merge-commits.md)). This is how changes written by the Opificia bot or by an agent get their sign-off:
 
 1. Review the pull request on GitHub.
 2. Approve it, with a line that reads `/signoff` in the review. A plain comment does not count: it must be an approving review.
-3. The DCO check runs again and passes. The `Sign-off` workflow then squash-merges the pull request, with your `Signed-off-by` line in the squash commit, using the name and email address in [`MAINTAINERS.md`](MAINTAINERS.md). You do not merge it yourself, and the branch is not rewritten.
+3. The DCO check runs again and passes. The `Sign-off` workflow then merges the pull request with a merge commit that carries your `Signed-off-by` line, using the name and email address in [`MAINTAINERS.md`](MAINTAINERS.md). You do not merge it yourself, and the branch is not rewritten.
 
-By writing `/signoff`, you certify the Developer Certificate of Origin for the commits by the bot and by you, exactly as with `git commit -s`. Nothing is merged when:
+By writing `/signoff`, you certify the Developer Certificate of Origin for the commits by the bot and by you, exactly as with `git commit -s`. Those commits reach `main` as they are, and the merge commit records your certification. Nothing is merged when:
 
 - your approval is not on the current head of the branch, because someone pushed after your review. Approve the new head;
-- a commit is by someone other than you or the bot that opened the pull request, because that person must sign off themselves. An author email alone proves nothing, so a commit counts as the bot's only when GitHub names that bot as the author of the pull request;
+- a commit is by someone other than you or the bot that opened the pull request, because that person must sign off themselves. A commit by you or the bot that carries a `Signed-off-by` line for anyone else is refused too: it would reach `main` with a certification nobody gave. An author email alone proves nothing, so a commit counts as the bot's only when GitHub names that bot as the author of the pull request;
 - the pull request does not go into the default branch. A stacked pull request moves onto the default branch when its base is merged; approve it again then;
 - the branch changes `.github/workflows/`, which the bot may not merge. Sign off in a terminal and merge it yourself; or
 - the required checks do not pass within 30 minutes. Approve again once they do, or merge it yourself.
@@ -150,7 +150,7 @@ fix(governance)!: correct the RFC comment period
 
 A `!` after the type marks a breaking change. Explain it in the commit body, in a `BREAKING CHANGE:` footer.
 
-Pull requests are squash-merged, and the pull request title becomes the commit message on `main`. That is why the title must follow this format too. A check enforces it.
+Pull requests are merged with a merge commit ([ADR-0012](docs/adr/0012-merge-with-merge-commits.md)). Every commit of the branch reaches `main`, so every commit message must follow this format. The merge commit takes the pull request's title, so `git log --first-parent main` reads as a list of changes. That is why the title must follow this format too. A check enforces it.
 
 ## Pull request process
 
@@ -158,7 +158,7 @@ Pull requests are squash-merged, and the pull request title becomes the commit m
 2. **Link the issue or Discussion** the change belongs to, if there is one.
 3. **Keep the checks green.** They check licence headers (REUSE), sign-offs, Markdown style, links and the pull request title. [`AGENTS.md`](AGENTS.md) shows how to run them locally.
 4. **Review.** A code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) must approve. Policy files need approval from the steering team.
-5. **Merge.** A maintainer squash-merges the pull request.
+5. **Merge.** A maintainer merges the pull request with a merge commit, usually by approving it with `/signoff` (see [Sign off at the merge](#sign-off-at-the-merge)).
 
 If nobody responds within ten working days, add a comment to the pull request. [`docs/community/triage.md`](docs/community/triage.md) describes our response-time goals.
 

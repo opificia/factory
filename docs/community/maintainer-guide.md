@@ -32,7 +32,7 @@ Pull requests from automated agents need a human maintainer's approval like any 
 - All required checks must be green: REUSE, DCO, Markdown, links and the pull request title.
 - At least one approval from a code owner. Policy files need an approval from the steering team.
 - No unresolved objections. For significant changes, the RFC process must be complete.
-- **Squash merge** only. Check that the squash commit message keeps the `Signed-off-by` and `Assisted-by` trailers, and that the title follows Conventional Commits.
+- **Merge commits** only ([ADR-0012](../adr/0012-merge-with-merge-commits.md)). Approve with `/signoff` to let the `Sign-off` workflow merge with your sign-off in the merge commit. If you merge by hand, title the merge commit with the pull request's title and number, and add your `Signed-off-by` line to it when the branch has commits without their author's sign-off.
 - Do not merge your own pull request without another maintainer's approval.
 - Do not bypass branch protection, except to fix a broken repository, and say so in the pull request.
 
