@@ -140,7 +140,12 @@ describe("judgeProbe", () => {
 describe("KubernetesService", () => {
   let server: Server;
   let url: string;
-  const requests: Array<{ method: string; path: string; body?: { metadata?: { name?: string; ownerReferences?: unknown[] }; stringData?: unknown } }> = [];
+  const requests: Array<{ method: string; path: string; body?: { metadata?: { name?: string; ownerReferences?: unknown[] }; stringData?: unknown; spec?: unknown } }> = [];
+  const tight = {
+    metadata: { name: "opificia-sandbox" },
+    spec: { podSelector: { matchLabels: { "opificia.role": "sandbox" } }, policyTypes: ["Egress"], egress: [{ to: [{ podSelector: {} }], ports: [{ port: 3001 }] }] },
+  };
+  let policies: unknown[] = [tight];
   let probes: { sandbox: ProbeResult; control: ProbeResult } = { sandbox: { gateway: true, reached: [] }, control: { gateway: false, reached: ["10.96.0.1:443"] } };
 
   beforeAll(async () => {
@@ -152,6 +157,7 @@ describe("KubernetesService", () => {
         requests.push({ method: req.method ?? "", path, body: raw ? JSON.parse(raw) : undefined });
         const json = (status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
         if (path === "/api/v1/namespaces/opificia/services/opificia-sandbox") return json(200, { spec: { clusterIP: "10.0.0.7", ports: [{ port: 3001 }] } });
+        if (path === "/apis/networking.k8s.io/v1/namespaces/opificia/networkpolicies") return json(200, { items: policies });
         if (req.method === "POST" && path.endsWith("/pods")) {
           const name = (JSON.parse(raw) as { metadata: { name: string } }).metadata.name;
           return json(201, { metadata: { name, uid: `uid-${name}` } });
@@ -162,7 +168,7 @@ describe("KubernetesService", () => {
         if (probe) {
           const result = probe[1] === "probe" ? probes.sandbox : probes.control;
           if (probe[2]) return res.writeHead(200).end(JSON.stringify(result));
-          return json(200, { status: { phase: "Succeeded", containerStatuses: [{ state: { terminated: { exitCode: 0 } } }] } });
+          return json(200, { spec: { nodeName: "sandbox-node-1" }, status: { phase: "Succeeded", containerStatuses: [{ state: { terminated: { exitCode: 0 } } }] } });
         }
         if (path.endsWith("/pods/opificia-run-done")) {
           return json(200, { status: { phase: "Failed", containerStatuses: [{ state: { terminated: { exitCode: 3 } } }] } });
@@ -193,6 +199,7 @@ describe("KubernetesService", () => {
       OPIFICIA_KUBERNETES_PROBE_IMAGE: "server:1",
       OPIFICIA_SANDBOX_IMAGE: "harness:1",
       OPIFICIA_RUN_TIMEOUT_MINUTES: 60,
+      OPIFICIA_SANDBOX_PORT: 3001,
     } as Config);
 
   it("finds the gateway, probes the network and starts pods", async () => {
@@ -201,8 +208,10 @@ describe("KubernetesService", () => {
     const kube = service();
     await kube.prepare();
     expect(kube.gatewayUrl).toBe("gateway:3001");
-    const created = requests.filter((r) => r.method === "POST").map((r) => r.body?.metadata?.name);
-    expect(created).toEqual([expect.stringMatching(/^opificia-network-probe-/), expect.stringMatching(/^opificia-network-control-/)]);
+    const created = requests.filter((r) => r.method === "POST").map((r) => r.body as { metadata: { name: string }; spec: { nodeName?: string } });
+    expect(created.map((p) => p.metadata.name)).toEqual([expect.stringMatching(/^opificia-network-probe-/), expect.stringMatching(/^opificia-network-control-/)]);
+    // The control runs on the node the sandbox probe got.
+    expect(created.map((p) => p.spec.nodeName)).toEqual([undefined, "sandbox-node-1"]);
     const deleted = requests.filter((r) => r.method === "DELETE").map((r) => r.path);
     expect(deleted).toEqual([expect.stringContaining("opificia-network-probe-"), expect.stringContaining("opificia-network-control-")]);
 
@@ -216,6 +225,13 @@ describe("KubernetesService", () => {
     expect(await kube.waitForExit("opificia-run-done")).toBe(3);
     expect(await kube.waitForExit("opificia-run-gone")).toBe(137);
     expect(await kube.listSandboxes()).toEqual([{ id: "opificia-run-x", sessionId: "x" }]);
+  });
+
+  it("refuses to run sandboxes when a network policy lets them out", async () => {
+    policies = [tight, { metadata: { name: "allow-all" }, spec: { podSelector: {}, policyTypes: ["Egress"], egress: [{}] } }];
+    await expect(service().prepare()).rejects.toThrow(/allow-all lets sandboxes reach any address/);
+    expect(requests.some((r) => r.method === "POST")).toBe(false);
+    policies = [tight];
   });
 
   it("refuses to run sandboxes when the cluster does not enforce the network policy", async () => {

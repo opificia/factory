@@ -16,6 +16,7 @@ import {
   type Stage,
 } from "@opificia/contracts";
 import type { WebSocket } from "ws";
+import { Deferred } from "../common/deferred.js";
 import { CONFIG, type Config } from "../config.js";
 import { PrismaService } from "../prisma.service.js";
 import { DomainError } from "../runs/decider.js";
@@ -23,6 +24,11 @@ import { EventStore } from "../runs/event-store.service.js";
 import { SANDBOX_BACKEND, shortId, type SandboxBackend } from "./backend.js";
 import { EgressBudget } from "./egress-policy.js";
 
+/** How long a stage waits before it checks again for room for its sandbox. */
+export const WAIT_FOR_ROOM_MS = 30_000;
+/** Key of the PostgreSQL advisory lock under which sessions are admitted. */
+const ADMISSION_LOCK = 0x6f706966;
+const BUSY = ["starting", "running"];
 /** Progress events kept per stage; more are dropped. */
 const MAX_EVENTS_PER_SESSION = 3000;
 /** Lines written to a session's egress log; more are dropped. */
@@ -83,18 +89,33 @@ export class SessionsService {
     return dirs;
   }
 
-  /** Records a session and returns its secret token. */
-  async create(input: { sessionId: string; orgId: string; runId: string; stage: Stage; task: RunnerTask }): Promise<string> {
+  /** Whether `limit` sandboxes are starting or running already. A hint only: `create` decides. */
+  async full(limit: number): Promise<boolean> {
+    return (await this.prisma.sandboxSession.count({ where: { status: { in: BUSY } } })) >= limit;
+  }
+
+  /**
+   * Records a session and returns its secret token, if fewer than `limit`
+   * sandboxes are starting or running; otherwise throws `Deferred`. Workers
+   * admit sessions one at a time under a database lock, so the limit holds
+   * across all of them.
+   */
+  async create(input: { sessionId: string; orgId: string; runId: string; stage: Stage; task: RunnerTask; limit: number }): Promise<string> {
     const token = randomBytes(32).toString("base64url");
-    await this.prisma.sandboxSession.create({
-      data: {
-        id: input.sessionId,
-        orgId: input.orgId,
-        runId: input.runId,
-        stage: input.stage,
-        tokenHash: hashToken(token),
-        task: input.task,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMISSION_LOCK}::bigint)`;
+      const busy = await tx.sandboxSession.count({ where: { status: { in: BUSY } } });
+      if (busy >= input.limit) throw new Deferred(`all ${input.limit} sandboxes are busy`, WAIT_FOR_ROOM_MS);
+      await tx.sandboxSession.create({
+        data: {
+          id: input.sessionId,
+          orgId: input.orgId,
+          runId: input.runId,
+          stage: input.stage,
+          tokenHash: hashToken(token),
+          task: input.task,
+        },
+      });
     });
     return token;
   }

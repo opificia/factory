@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { DEFAULT_PROTECTED_PATHS, RunEventBody, conventionalTitle, type RunnerTask, type Stage } from "@opificia/contracts";
 import { DEFAULT_LIMITS, checkChange } from "../checks/checker.js";
+import { Deferred } from "../common/deferred.js";
 import { CONFIG, type Config } from "../config.js";
 import type { Run } from "../generated/prisma/client.js";
 import { bundleForSandbox, git, loadResult, pushBranch, updateCache } from "../github/git.js";
@@ -13,25 +15,13 @@ import { GitHubService } from "../github/github.service.js";
 import { PrismaService } from "../prisma.service.js";
 import { DomainError, type Effect, type Revision } from "../runs/decider.js";
 import { EventStore } from "../runs/event-store.service.js";
-import { SessionsService } from "../sandbox/sessions.service.js";
+import { SessionsService, WAIT_FOR_ROOM_MS } from "../sandbox/sessions.service.js";
 
 /** Below this remaining budget, a run does not start another stage. */
 const MIN_STAGE_BUDGET_USD = 0.5;
 
-/** How long a stage waits before it checks again for room for its sandbox. */
-const WAIT_FOR_ROOM_MS = 30_000;
-
 export type StoredEffect = { id: bigint; orgId: string; runId: string; type: string; payload: unknown };
 
-/** An effect that cannot happen yet. The outbox tries it again later, without counting an attempt. */
-export class Deferred extends Error {
-  constructor(
-    message: string,
-    readonly delayMs: number,
-  ) {
-    super(message);
-  }
-}
 
 /**
  * Performs the side effects that run events ask for. Each handler checks the
@@ -41,8 +31,6 @@ export class Deferred extends Error {
 @Injectable()
 export class EffectsService {
   private readonly logger = new Logger(EffectsService.name);
-  /** Stages this worker is starting, which may not have a session yet. */
-  private starting = 0;
 
   constructor(
     @Inject(CONFIG) private readonly config: Config,
@@ -95,19 +83,12 @@ export class EffectsService {
       return;
     }
 
-    // Count the stages starting now too, so concurrent starts see each other.
-    this.starting += 1;
-    try {
-      const busy = await this.prisma.sandboxSession.count({ where: { status: { in: ["starting", "running"] } } });
-      const limit = this.config.OPIFICIA_MAX_SANDBOXES;
-      if (busy + this.starting > limit) throw new Deferred(`all ${limit} sandboxes are busy`, WAIT_FOR_ROOM_MS);
-      await this.launchStage(run, stage, remaining);
-    } finally {
-      this.starting -= 1;
+    // A quick look first, to spare GitHub while every sandbox is busy. The
+    // session itself is admitted under a lock (SessionsService.create).
+    if (await this.sessions.full(this.config.OPIFICIA_MAX_SANDBOXES)) {
+      throw new Deferred(`all ${this.config.OPIFICIA_MAX_SANDBOXES} sandboxes are busy`, WAIT_FOR_ROOM_MS);
     }
-  }
 
-  private async launchStage(run: Run, stage: Stage, remaining: number): Promise<void> {
     const installationId = Number(run.installationId);
     const token = await this.github.repoToken(installationId, run.repo, false);
     const { defaultBranch } = await this.github.getRepo(installationId, run.repo);
@@ -118,7 +99,7 @@ export class EffectsService {
     const issue = await this.github.getIssue(installationId, run.repo, run.issueNumber);
 
     const sessionId = randomUUID();
-    const { inDir } = await this.sessions.makeDirs(run.id, sessionId);
+    const { inDir, base } = await this.sessions.makeDirs(run.id, sessionId);
     await bundleForSandbox(cacheDir, defaultBranch, baseSha, join(inDir, "repo.bundle"));
 
     const model = stage === "plan" ? this.config.OPIFICIA_PLAN_MODEL : this.config.OPIFICIA_IMPLEMENT_MODEL;
@@ -141,7 +122,13 @@ export class EffectsService {
         trailers: [`Assisted-by: Claude Code/${model}`, `Opificia-Run: ${run.id}`],
       },
     };
-    const sandboxToken = await this.sessions.create({ sessionId, orgId: run.orgId, runId: run.id, stage, task });
+    let sandboxToken: string;
+    try {
+      sandboxToken = await this.sessions.create({ sessionId, orgId: run.orgId, runId: run.id, stage, task, limit: this.config.OPIFICIA_MAX_SANDBOXES });
+    } catch (error) {
+      await rm(base, { recursive: true, force: true });
+      throw error;
+    }
 
     try {
       await this.events.dispatch(run.orgId, run.id, { type: "StartStage", stage, sessionId, baseSha });

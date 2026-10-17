@@ -7,6 +7,8 @@ import { request as httpsRequest } from "node:https";
 
 const SERVICE_ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount";
 const TIMEOUT_MS = 30_000;
+/** The largest answer the worker reads; pod logs ask for less (see `saveLogs`). */
+export const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
 export class KubeApiError extends Error {
   constructor(
@@ -74,7 +76,15 @@ export class KubeApi {
     return new Promise((resolve, reject) => {
       const req = request(url, { method, headers, timeout: TIMEOUT_MS, ...options }, (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        let size = 0;
+        res.on("data", (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > MAX_RESPONSE_BYTES) {
+            req.destroy(new Error(`${method} ${url.pathname}: the answer is larger than ${MAX_RESPONSE_BYTES} bytes`));
+            return;
+          }
+          chunks.push(chunk);
+        });
         res.on("error", reject);
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");

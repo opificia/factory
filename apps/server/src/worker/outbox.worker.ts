@@ -4,7 +4,8 @@
 import { Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
 import { PrismaService } from "../prisma.service.js";
 import { EventStore } from "../runs/event-store.service.js";
-import { Deferred, EffectsService, type StoredEffect } from "./effects.service.js";
+import { Deferred } from "../common/deferred.js";
+import { EffectsService, type StoredEffect } from "./effects.service.js";
 
 const CONCURRENCY = 3;
 const MAX_ATTEMPTS = 5;

@@ -8,19 +8,28 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { CONFIG, type Config, type SandboxPodSettings } from "../config.js";
 import type { SandboxBackend, SandboxSpec } from "./backend.js";
 import { KubeApi, KubeApiError } from "./kube-api.js";
+import { sandboxEgressProblems, type NetworkPolicy } from "./network-policy.js";
 
 const POLL_MS = 5000;
 /** How long the network probe may take, including a new sandbox node and pulling its image. */
 const PROBE_TIMEOUT_MS = 15 * 60 * 1000;
-/** Addresses a sandbox must not reach directly: public hosts and the cloud metadata service. */
-const PROBE_TARGETS = ["1.1.1.1:443", "8.8.8.8:53", "9.9.9.9:443", "169.254.169.254:80"];
+/**
+ * What a sandbox must not reach directly: public hosts over TCP and UDP (a
+ * DNS query), and the cloud metadata service. The probe adds the Kubernetes
+ * API server itself, from its own environment.
+ */
+const PROBE_TARGETS = ["1.1.1.1:443", "9.9.9.9:443", "8.8.8.8:53", "udp:8.8.8.8:53", "udp:1.1.1.1:53", "169.254.169.254:80"];
 /** Exit code reported for a pod that is gone or was stopped before its container ended. */
 const GONE_EXIT_CODE = 137;
+
+/** The end of a sandbox's log that the worker keeps, within the API client's limit. */
+const LOG_QUERY = `timestamps=true&tailLines=20000&limitBytes=${8 * 1024 * 1024}`;
 
 const LABELS = { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" };
 
 type Pod = {
   metadata: { name: string; uid?: string; labels?: Record<string, string> };
+  spec?: { nodeName?: string };
   status?: {
     phase?: string;
     reason?: string;
@@ -136,23 +145,43 @@ export function sandboxSecret(pod: { metadata: { name: string; labels: Record<st
  */
 const PROBE = `
 const net = require("node:net");
-const attempt = (target) => new Promise((done) => {
+const dgram = require("node:dgram");
+// A DNS query for example.com: any answer means the packet got out and back.
+const DNS_QUERY = Buffer.from("abcd01000001000000000000076578616d706c6503636f6d0000010001", "hex");
+const split = (target) => {
   const i = target.lastIndexOf(":");
-  const socket = net.connect({ host: target.slice(0, i).replace(/^\\[|\\]$/g, ""), port: Number(target.slice(i + 1)), timeout: 5000 });
+  return [target.slice(0, i).replace(/^\\[|\\]$/g, ""), Number(target.slice(i + 1))];
+};
+const tcp = (target) => new Promise((done) => {
+  const [host, port] = split(target);
+  const socket = net.connect({ host, port, timeout: 5000 });
   socket.once("connect", () => { socket.destroy(); done(true); });
   socket.once("timeout", () => { socket.destroy(); done(false); });
   socket.once("error", () => done(false));
 });
+const udp = (target) => new Promise((done) => {
+  const [host, port] = split(target);
+  const socket = dgram.createSocket(net.isIPv6(host) ? "udp6" : "udp4");
+  const finish = (reached) => { clearTimeout(timer); socket.close(); done(reached); };
+  const timer = setTimeout(() => finish(false), 5000);
+  socket.once("message", () => finish(true));
+  socket.once("error", () => finish(false));
+  socket.send(DNS_QUERY, port, host);
+});
+const attempt = (target) => (target.startsWith("udp:") ? udp(target.slice(4)) : tcp(target));
 // The worker's service may need a moment to route to it; try for a minute.
 const reachGateway = async (gateway) => {
   if (!gateway) return false;
   for (let i = 0; i < 20; i++) {
-    if (await attempt(gateway)) return true;
+    if (await tcp(gateway)) return true;
     await new Promise((done) => setTimeout(done, 3000));
   }
   return false;
 };
 const targets = JSON.parse(process.env.PROBE_TARGETS);
+// Kubernetes gives every pod the API server's address.
+const api = process.env.KUBERNETES_SERVICE_HOST;
+if (api) targets.push((api.includes(":") ? "[" + api + "]" : api) + ":" + (process.env.KUBERNETES_SERVICE_PORT || "443"));
 Promise.all([reachGateway(process.env.PROBE_GATEWAY), ...targets.map(attempt)]).then(([gateway, ...reached]) => {
   console.log(JSON.stringify({ gateway, reached: targets.filter((_, i) => reached[i]) }));
 });
@@ -169,6 +198,8 @@ export function probePod(options: {
   settings: SandboxPodSettings;
   /** The control pod runs outside the sandbox network policy. */
   control?: boolean;
+  /** Runs the pod on this node, so both probes test the same one. */
+  nodeName?: string;
 }) {
   // The control pod's role does not match the policy's selector.
   const labels: Record<string, string> = options.control ? { "opificia.role": "network-control" } : {};
@@ -181,6 +212,7 @@ export function probePod(options: {
     ],
     resources: { requests: { cpu: "50m", memory: "64Mi" }, limits: { cpu: "200m", memory: "128Mi" } },
   });
+  if (options.nodeName) Object.assign(pod.spec, { nodeName: options.nodeName });
   return pod;
 }
 
@@ -258,40 +290,72 @@ export class KubernetesService implements SandboxBackend {
     if (!ip || ip === "None" || !port) throw new Error(`the service ${name} has no cluster IP and port; sandboxes reach the worker through it`);
     this.gateway = { ip, port };
     this.logger.log(`sandboxes run as pods in the namespace ${this.namespace} and reach the worker at ${ip}:${port}`);
-    if (this.config.OPIFICIA_KUBERNETES_NETWORK_PROBE === "on") await this.probeNetwork();
+    if (this.config.OPIFICIA_KUBERNETES_NETWORK_PROBE === "on") {
+      await this.checkPolicies();
+      await this.probeNetwork();
+    }
     else this.logger.warn("the network probe is off; make sure the cluster enforces the sandbox network policy");
   }
 
+  /**
+   * Reads the network policies of the namespace. The probe shows that the
+   * cluster enforces them; this shows that they allow nothing but the worker.
+   */
+  private async checkPolicies(): Promise<void> {
+    const path = `/apis/networking.k8s.io/v1/namespaces/${encodeURIComponent(this.namespace)}/networkpolicies`;
+    const list = await this.api.json<{ items: NetworkPolicy[] }>("GET", path).catch((error: Error) => {
+      if (error instanceof KubeApiError && error.status === 403) {
+        throw new Error("the worker may not read network policies; its Role needs get and list on networkpolicies");
+      }
+      throw error;
+    });
+    const problems = sandboxEgressProblems(list.items, LABELS, this.config.OPIFICIA_SANDBOX_PORT);
+    if (problems.length > 0) {
+      throw new Error(`the network policies would let sandboxes bypass the egress proxy: ${problems.join("; ")}`);
+    }
+  }
+
   private async probeNetwork(): Promise<void> {
-    const api = process.env.KUBERNETES_SERVICE_HOST;
-    const targets = [...PROBE_TARGETS, ...(api ? [`${api}:${process.env.KUBERNETES_SERVICE_PORT ?? "443"}`] : [])];
     const suffix = randomBytes(4).toString("hex");
     const common = {
       image: this.config.OPIFICIA_KUBERNETES_PROBE_IMAGE ?? this.config.OPIFICIA_SANDBOX_IMAGE,
       gatewayIp: this.gateway!.ip,
       gatewayPort: this.gateway!.port,
-      targets,
+      targets: PROBE_TARGETS,
       settings: this.config.OPIFICIA_KUBERNETES_SANDBOX_POD,
     };
     const sandbox = probePod({ ...common, name: `opificia-network-probe-${suffix}` });
-    const control = probePod({ ...common, name: `opificia-network-control-${suffix}`, control: true });
+    const controlName = `opificia-network-control-${suffix}`;
     this.logger.log(`checking the sandbox network with ${sandbox.metadata.name}; on a new sandbox node this takes a few minutes`);
+    const deadline = Date.now() + PROBE_TIMEOUT_MS;
     try {
       await this.api.json("POST", this.path("pods"), sandbox);
-      await this.api.json("POST", this.path("pods"), control);
-      const [inside, outside] = await Promise.all([this.probeResult(sandbox.metadata.name), this.probeResult(control.metadata.name)]);
+      // The control runs on the node the scheduler chose for the sandbox probe.
+      const nodeName = await this.nodeOf(sandbox.metadata.name, deadline);
+      await this.api.json("POST", this.path("pods"), probePod({ ...common, name: controlName, control: true, nodeName }));
+      const [inside, outside] = await Promise.all([this.probeResult(sandbox.metadata.name, deadline), this.probeResult(controlName, deadline)]);
       const verdict = judgeProbe(inside, outside, this.config.OPIFICIA_KUBERNETES_GATEWAY_SERVICE);
       if (!verdict.ok) throw new Error(verdict.reason);
-      this.logger.log(`network probe: ${verdict.summary}`);
+      this.logger.log(`network probe on ${nodeName}: ${verdict.summary}`);
     } finally {
       await this.remove(sandbox.metadata.name);
-      await this.remove(control.metadata.name);
+      await this.remove(controlName);
+    }
+  }
+
+  /** Waits until a pod is on a node. */
+  private async nodeOf(name: string, deadline: number): Promise<string> {
+    for (;;) {
+      const pod = await this.api.json<Pod>("GET", this.path(`pods/${name}`));
+      if (pod.spec?.nodeName) return pod.spec.nodeName;
+      if (exitCodeOf(pod) !== undefined) throw new Error(`the network probe ${name} ended before it was scheduled`);
+      if (Date.now() > deadline) throw new Error(`the network probe ${name} found no node in ${PROBE_TIMEOUT_MS / 60_000} minutes`);
+      await sleep(POLL_MS / 5);
     }
   }
 
   /** Waits for a probe pod to finish and reads what it reached. */
-  private async probeResult(name: string): Promise<ProbeResult> {
-    const deadline = Date.now() + PROBE_TIMEOUT_MS;
+  private async probeResult(name: string, deadline: number): Promise<ProbeResult> {
     let code: number | undefined;
     while (code === undefined) {
       if (Date.now() > deadline) throw new Error(`the network probe ${name} did not finish in ${PROBE_TIMEOUT_MS / 60_000} minutes`);
@@ -342,7 +406,7 @@ export class KubernetesService implements SandboxBackend {
   }
 
   async saveLogs(id: string, file: string): Promise<void> {
-    await writeFile(file, await this.api.text(this.path(`pods/${id}/log?timestamps=true`)));
+    await writeFile(file, await this.api.text(this.path(`pods/${id}/log?${LOG_QUERY}`)));
   }
 
   async stop(id: string): Promise<void> {

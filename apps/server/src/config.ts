@@ -28,6 +28,9 @@ export const EgressAllow = z
     return ctx.issues.length > 0 ? z.NEVER : hosts;
   });
 
+/** The image `pnpm sandbox:build` builds. */
+export const DEFAULT_SANDBOX_IMAGE = "opificia/harness-claude:dev";
+
 /**
  * Settings for sandbox pods on Kubernetes (ADR-0010), as JSON. They let the
  * operator choose the nodes and the runtime without provider-specific code.
@@ -48,7 +51,17 @@ export const SandboxPodSettings = z
       /** For example `gvisor` on GKE Sandbox. */
       runtimeClassName: z.string().optional(),
       nodeSelector: z.record(z.string(), z.string()).default({}),
-      tolerations: z.array(z.record(z.string(), z.unknown())).default([]),
+      tolerations: z
+        .array(
+          z.strictObject({
+            key: z.string().optional(),
+            operator: z.enum(["Exists", "Equal"]).optional(),
+            value: z.string().optional(),
+            effect: z.enum(["NoSchedule", "PreferNoSchedule", "NoExecute"]).optional(),
+            tolerationSeconds: z.number().int().optional(),
+          }),
+        )
+        .default([]),
       imagePullSecrets: z.array(z.string()).default([]),
       cpu: z.string().default("2"),
       memory: z.string().default("4Gi"),
@@ -79,13 +92,13 @@ const Env = z.object({
   OPIFICIA_SANDBOX_PORT: z.coerce.number().int().default(3001),
   OPIFICIA_SANDBOX_BIND: z.string().default("0.0.0.0"),
   OPIFICIA_DATA_DIR: z.string().default(fileURLToPath(new URL("../../../.data", import.meta.url))),
-  OPIFICIA_SANDBOX_IMAGE: z.string().default("opificia/harness-claude:dev"),
+  OPIFICIA_SANDBOX_IMAGE: z.string().default(DEFAULT_SANDBOX_IMAGE),
   /** Where sandboxes run: the local Docker engine, or pods in a Kubernetes cluster (ADR-0010). */
   OPIFICIA_SANDBOX_BACKEND: z.enum(["docker", "kubernetes"]).default("docker"),
   /** Sandboxes that may run at once. Runs above the limit wait in the queue. */
   OPIFICIA_MAX_SANDBOXES: z.coerce.number().int().positive().default(4),
   /** The Kubernetes API, when the worker runs outside the cluster, such as `kubectl proxy` at http://127.0.0.1:8001. */
-  OPIFICIA_KUBERNETES_API: z.url().optional(),
+  OPIFICIA_KUBERNETES_API: z.url({ protocol: /^https?$/ }).optional(),
   /** The namespace for sandbox pods. Defaults to the worker's own namespace. */
   OPIFICIA_KUBERNETES_NAMESPACE: z.string().optional(),
   /** The service through which sandbox pods reach the worker's sandbox port. */

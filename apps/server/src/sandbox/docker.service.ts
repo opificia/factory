@@ -4,7 +4,7 @@
 import { writeFile } from "node:fs/promises";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import Docker from "dockerode";
-import { CONFIG, type Config } from "../config.js";
+import { CONFIG, DEFAULT_SANDBOX_IMAGE, type Config } from "../config.js";
 import type { SandboxBackend, SandboxSpec } from "./backend.js";
 
 export const SANDBOX_NETWORK = "opificia-sandbox";
@@ -44,7 +44,10 @@ export class DockerService implements SandboxBackend {
   async prepare(): Promise<void> {
     await this.docker.ping();
     if (!(await this.imageExists(this.config.OPIFICIA_SANDBOX_IMAGE))) {
-      this.logger.warn(`the sandbox image ${this.config.OPIFICIA_SANDBOX_IMAGE} is missing; build it with: pnpm sandbox:build`);
+      const image = this.config.OPIFICIA_SANDBOX_IMAGE;
+      // `pnpm sandbox:build` builds the default image only.
+      const hint = image === DEFAULT_SANDBOX_IMAGE ? "build it with: pnpm sandbox:build" : "build it, or pull it from your registry";
+      this.logger.warn(`the sandbox image ${image} is missing; ${hint}`);
     }
     const networks = await this.docker.listNetworks({ filters: { name: [SANDBOX_NETWORK] } });
     if (!networks.some((n) => n.Name === SANDBOX_NETWORK)) {

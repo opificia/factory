@@ -4,12 +4,13 @@
 import { EventEmitter } from "node:events";
 import { Logger } from "@nestjs/common";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Deferred } from "../common/deferred.js";
 import type { Config } from "../config.js";
 import type { GitHubService } from "../github/github.service.js";
 import type { PrismaService } from "../prisma.service.js";
 import type { EventStore } from "../runs/event-store.service.js";
 import type { SessionsService } from "../sandbox/sessions.service.js";
-import { Deferred, EffectsService } from "./effects.service.js";
+import { EffectsService } from "./effects.service.js";
 import { OutboxWorker } from "./outbox.worker.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -57,15 +58,14 @@ describe("OutboxWorker", () => {
 describe("EffectsService", () => {
   it("defers a stage while every sandbox is busy", async () => {
     const run = { id: "r", orgId: "o", state: "queued", budgetUsd: 15, costUsd: 0, sessionId: null };
-    const prisma = {
-      run: { findFirst: vi.fn(() => Promise.resolve(run)) },
-      sandboxSession: { count: vi.fn(() => Promise.resolve(4)) },
-    } as unknown as PrismaService;
+    const prisma = { run: { findFirst: vi.fn(() => Promise.resolve(run)) } } as unknown as PrismaService;
     const github = { repoToken: vi.fn() } as unknown as GitHubService;
-    const effects = new EffectsService({ OPIFICIA_MAX_SANDBOXES: 4 } as Config, prisma, github, {} as EventStore, {} as SessionsService);
+    const sessions = { full: vi.fn(() => Promise.resolve(true)) } as unknown as SessionsService;
+    const effects = new EffectsService({ OPIFICIA_MAX_SANDBOXES: 4 } as Config, prisma, github, {} as EventStore, sessions);
 
     const start = effects.perform({ id: 1n, orgId: "o", runId: "r", type: "start_stage", payload: { stage: "plan" } });
     await expect(start).rejects.toBeInstanceOf(Deferred);
+    expect(sessions.full).toHaveBeenCalledWith(4);
     expect(github.repoToken).not.toHaveBeenCalled();
   });
 });
