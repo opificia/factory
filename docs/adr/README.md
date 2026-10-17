@@ -47,3 +47,4 @@ ADRs are not edited after acceptance, apart from typos and links. To change a de
 | [0007](0007-sandbox-network-policy.md) | Sandbox network policy, with a decision model for unknown hosts | accepted |
 | [0008](0008-render-markdown-with-streamdown.md) | Render Markdown in the web app with Streamdown | accepted |
 | [0009](0009-let-agents-see-the-web-app.md) | Let agents see the web app, with a fixture mode and a browser in the sandbox | accepted |
+| [0010](0010-run-on-kubernetes.md) | Run Opificia on any Kubernetes cluster, with sandboxes that scale with the work | proposed |
