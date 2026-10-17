@@ -16,6 +16,29 @@ set -euo pipefail
 
 zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"
 missing=0
+foreign=0
+
+# A merge needs no sign-off of its own only if it adds nothing: two parents,
+# and the tree git makes of them on its own. The same rule as the DCO check;
+# a merge that resolved conflicts is checked like any other commit. Merges may
+# never carry a foreign sign-off.
+#
+# The test needs `git merge-tree --write-tree`, from Git 2.38. With an older
+# Git the hook cannot tell a clean merge from one with changes of its own, so
+# it says so and leaves that merge to the DCO check in CI, which runs a
+# recent Git. Everything else is checked as usual.
+merge_tree=0
+git merge-tree --write-tree --no-messages HEAD HEAD > /dev/null 2>&1 && merge_tree=1
+is_merge() {
+  [ "$(git show -s --format='%P' "$1" | wc -w)" -ge 2 ]
+}
+clean_merge() {
+  local parents clean
+  read -r -a parents <<< "$(git show -s --format='%P' "$1")"
+  [ "${#parents[@]}" -eq 2 ] &&
+    clean="$(git merge-tree --write-tree --no-messages "${parents[0]}" "${parents[1]}" 2>/dev/null)" &&
+    [ "$clean" = "$(git rev-parse "$1^{tree}")" ]
+}
 
 while read -r _ local_sha _ remote_sha; do
   # Deleting a remote branch: nothing to check.
@@ -28,15 +51,42 @@ while read -r _ local_sha _ remote_sha; do
     range=("${remote_sha}..${local_sha}")
   fi
 
-  for sha in $(git rev-list --no-merges "${range[@]}"); do
+  for sha in $(git rev-list "${range[@]}"); do
+    # The same rule as the DCO check (.github/scripts/dco-check.sh): every
+    # line that reads as a sign-off must be exactly the author's.
     author_email="$(git show -s --format='%ae' "$sha")"
-    signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
-    if ! grep -qiF "<${author_email}>" <<< "$signoffs"; then
+    author_name="$(git show -s --format='%an' "$sha")"
+    own=0
+    other=0
+    while IFS= read -r line; do
+      shopt -s nocasematch
+      if [[ "$line" =~ ^Signed-off-by:\ ([^\<\>]+)\ \<([^\<\>]+)\>$ ]] &&
+        [[ "${BASH_REMATCH[1]}" == "$author_name" ]] && [[ "${BASH_REMATCH[2]}" == "$author_email" ]]; then
+        own=1
+      else
+        other=1
+      fi
+      shopt -u nocasematch
+    done < <(git show -s --format='%B' "$sha" | tr -d '\r' | LC_ALL=C grep -iE '^[^[:alnum:]]*signed[^[:alnum:]]*off[^[:alnum:]]*by' || true)
+    if [ "$other" -eq 1 ]; then
+      echo "sign-off not by the author: $(git show -s --format='%h %s' "$sha")" >&2
+      foreign=1
+    elif [ "$own" -eq 0 ] && is_merge "$sha" && [ "$merge_tree" -eq 0 ]; then
+      echo "not checked: $(git show -s --format='%h %s' "$sha") is a merge, and checking merges needs Git 2.38 or later. The DCO check in CI will check it." >&2
+    elif [ "$own" -eq 0 ] && ! clean_merge "$sha"; then
       echo "missing sign-off: $(git show -s --format='%h %s' "$sha")" >&2
       missing=1
     fi
   done
 done
+
+if [ "$foreign" -ne 0 ]; then
+  echo >&2
+  echo "Push refused: some commits carry a sign-off that is not exactly their author's," >&2
+  echo "\"Signed-off-by: Name <email>\" as in the commit's author. Each person signs off" >&2
+  echo "their own commits; a maintainer's /signoff does not cover these." >&2
+  exit 1
+fi
 
 if [ "$missing" -ne 0 ] && [ "$(git config --get opificia.signoff || true)" = approval ]; then
   echo >&2

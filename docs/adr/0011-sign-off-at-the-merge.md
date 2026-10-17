@@ -1,6 +1,6 @@
 # ADR-0011: Sign off at the merge
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0012](0012-merge-with-merge-commits.md)
 - **Date:** 2026-10-17
 - **Deciders:** the maintainers, with the project steward as architecture owner
 - **Supersedes:** [ADR-0006](0006-sign-off-by-approval.md)
