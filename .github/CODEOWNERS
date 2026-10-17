@@ -1,4 +1,5 @@
-# Code owners for Opificia AI. A code owner must approve every pull request.
+# Code owners for Opificia AI. A code owner must approve every pull request,
+# apart from the exception for a single maintainer in the maintainer guide.
 # Later rules take precedence over earlier ones.
 # See docs/community/maintainer-guide.md.
 

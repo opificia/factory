@@ -157,7 +157,7 @@ Pull requests are merged with a merge commit ([ADR-0012](docs/adr/0012-merge-wit
 1. **One topic per pull request.** Small pull requests are reviewed faster.
 2. **Link the issue or Discussion** the change belongs to, if there is one.
 3. **Keep the checks green.** They check licence headers (REUSE), sign-offs, Markdown style, links, commit messages and the pull request title. [`AGENTS.md`](AGENTS.md) shows how to run them locally.
-4. **Review.** A code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) must approve. Policy files need approval from the steering team.
+4. **Review.** A code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) must approve. Policy files need approval from the steering team. While the project has one maintainer, that maintainer's own pull requests need no approval (see the [maintainer guide](docs/community/maintainer-guide.md#merging)).
 5. **Merge.** A maintainer merges the pull request with a merge commit, usually by approving it with `/signoff` (see [Sign off at the merge](#sign-off-at-the-merge)).
 
 If nobody responds within ten working days, add a comment to the pull request. [`docs/community/triage.md`](docs/community/triage.md) describes our response-time goals.
