@@ -161,8 +161,10 @@ merge_message() {
 # the last approval; with another approval in place, the merge goes ahead and
 # the commit names a maintainer who withdrew a moment before. The sign-offs
 # are therefore read once more after the merge, and the run fails, naming
-# them, if any withdrew in that window, so that a maintainer can follow up. GitHub merges only if the head is still the approved
-# commit ("sha") and the branch rules are met, such as the required checks.
+# them, if any withdrew in that window, so that a maintainer can follow up.
+#
+# GitHub merges only if the head is still the approved commit ("sha") and the
+# branch rules are met, such as the required checks.
 merge() {
   : "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
   local login logins name email message deadline="$DEADLINE" result title signers names
