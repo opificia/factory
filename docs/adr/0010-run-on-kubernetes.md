@@ -54,11 +54,16 @@ Each pod gets what the Docker container gets today, in Kubernetes terms:
 - requests and limits of 2 CPUs and 4 GiB of memory, which the operator can change;
 - `activeDeadlineSeconds` set to the run's time limit, so a pod never outlives its run;
 - a configurable `runtimeClassName`, `nodeSelector` and tolerations, so sandboxes run on their own nodes, with gVisor where the cluster offers it;
-- the annotation `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`, so a node autoscaler never removes a node while a run works on it.
+- the annotations `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` for the Cluster Autoscaler and `karpenter.sh/do-not-disrupt: "true"` for Karpenter, so these two autoscalers do not remove a node while a run works on it. Other autoscalers, node upgrades and node failures can still remove it. A sandbox pod has no controller, so it is not started again elsewhere: the run fails with the reason, and a person can start it again.
 
 The network is closed by a `NetworkPolicy` in the chart. Sandbox pods accept no connections, and may only connect to the worker's sandbox port. They get no DNS: the worker adds the address of its own sandbox service to each pod as the host name `gateway`, so sandboxes reach `gateway:3001` exactly as they do with Docker. Everything else goes through the egress proxy of [ADR-0007](0007-sandbox-network-policy.md), which already refuses private, loopback and link-local addresses. On Kubernetes those include the pod and service networks and the API server.
 
-A `NetworkPolicy` only works when the cluster's network plugin enforces it. Some do not, and then a sandbox would have an open network. Before it starts its first sandbox, the worker therefore starts a probe pod with the sandbox policy, which tries to reach a public address directly. If the probe gets through, the worker refuses to start sandboxes and says why.
+A `NetworkPolicy` only works when the cluster's network plugin enforces it. Some do not, and then a sandbox would have an open network. Before it starts its first sandbox, the worker therefore runs a paired probe on a sandbox node:
+
+- a **control pod**, which the sandbox policy does not select, tries to reach a list of targets directly: public addresses, the cloud metadata address and the Kubernetes API server;
+- a **probe pod**, with the sandbox labels and so under the sandbox policy, tries the same targets, and the gateway.
+
+The worker starts sandboxes only when the probe pod reaches the gateway and none of the targets, and the control pod reaches at least one target. A target the control pod cannot reach either proves nothing about the policy: a cluster firewall may block it. If the control pod reaches no target at all, the result is inconclusive and the worker refuses to start, as it does when the probe pod gets through. An operator who has checked the network another way can turn the probe off.
 
 ### Scaling
 
@@ -98,9 +103,15 @@ The steward confirms the cost before the infrastructure is created.
 [ADR-0004](0004-target-architecture.md) names gVisor as the reference sandbox runtime on Kubernetes. GKE offers it as the runtime class `gvisor`. Kapsule only offers `containerd` with the default runtime. Until that changes, the reference deployment relies on:
 
 - the pod's security context, which is the same as the Docker container's today;
-- **dedicated sandbox nodes.** Only sandbox pods tolerate their taint, and they carry no secrets. A process that escapes its container lands on a node where the only other workloads are other sandboxes. Kubernetes' node authorizer lets that node's kubelet read only the secrets of pods on the same node, and there are none.
+- **dedicated sandbox nodes.** Only sandbox pods tolerate their taint, so the worker, the API, Valkey and their secrets never run there. Kubernetes' node authorizer lets a node's kubelet read only the secrets of pods on that node.
 
-This is weaker than gVisor, and we say so in the documentation.
+Dedicated nodes do not make an escape harmless. The cluster's own agents run on every node as DaemonSets, whatever the taints: the network plugin (Cilium on Kapsule), `kube-proxy`, storage drivers and often monitoring agents. Some of them are privileged and hold credentials with cluster-wide permissions. The network plugin's agent, for example, can usually change network policies. A process that escapes its container is root on the node and can take those credentials, so it may be able to open the network for other sandboxes, or reach further into the cluster.
+
+So on a cluster without gVisor or a similar runtime:
+
+- we keep the DaemonSets on the sandbox pool to the ones the cluster needs, and the documentation lists them for Kapsule;
+- the documentation says plainly that this isolation is weaker than gVisor, and that such a cluster suits repositories whose issues the operator trusts, such as their own, and not issues from anyone on the internet;
+- the reference deployment works only on the project's own repositories until a stronger runtime is available (follow-up 5).
 
 ### Reasons
 
@@ -124,13 +135,13 @@ No new container image: the server image builds on the `node:24` image that ADR-
 - The runner protocol changes. Harness adapters built on `sdk/runner` do not need to change; adapters that read the host folders directly do.
 - Two backends need testing. The shared part is most of the code, but the Kubernetes backend needs a cluster to test against. `kind` on a laptop is enough for a person; a CI job with `kind` needs its own decision, because it adds a GitHub Action.
 - The worker remains a single replica. If it restarts, the runs in flight fail, as they do today. Handing sessions over between workers is later work.
-- On Kapsule, sandboxes do not have gVisor. The dedicated sandbox nodes limit the damage of an escape, but do not prevent it.
+- On Kapsule, sandboxes do not have gVisor. The dedicated sandbox nodes keep the control plane and its secrets away from sandboxes, but an escape can still use the credentials of the cluster's node agents. The reference deployment therefore works only on the project's own repositories for now.
 - The first run after a quiet period waits for a node to start, typically a few minutes.
 
 Follow-up work:
 
 1. Move the bundles onto the gateway (runner, harness and server together).
-2. The sandbox backend interface and the Kubernetes backend, with the network probe.
+2. The sandbox backend interface and the Kubernetes backend, with the paired network probe.
 3. The server image, the web app served by the server, and the Helm chart, with a guide in `docs/kubernetes.md` for Kapsule, GKE and `kind`.
 4. Create the reference deployment on Scaleway, after the steward confirms the cost.
 5. Find a stronger runtime for Kapsule: gVisor or Kata Containers installed on the sandbox pool, or support from Scaleway.
