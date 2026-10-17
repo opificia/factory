@@ -57,6 +57,7 @@ describe("SessionsService.stopRun", () => {
 
 describe("SessionsService watching a sandbox", () => {
   function setup(listings: Array<Array<{ id: string; sessionId: string }> | Error>) {
+    const calls: string[] = [];
     const update = vi.fn(() => Promise.resolve({}));
     const prisma = {
       sandboxSession: { findUnique: vi.fn(() => Promise.resolve({ id: "s", status: "completed", runId: "r", orgId: "o", stage: "plan" })), update },
@@ -67,21 +68,23 @@ describe("SessionsService watching a sandbox", () => {
     });
     const backend = {
       waitForExit: vi.fn(() => Promise.reject(new Error("socket hang up"))),
-      saveLogs: vi.fn(() => Promise.resolve()),
-      remove: vi.fn(() => Promise.resolve()),
+      saveLogs: vi.fn(() => (calls.push("saveLogs"), Promise.resolve())),
+      remove: vi.fn(() => (calls.push("remove"), Promise.resolve())),
       listSandboxes,
     } as unknown as SandboxBackend;
     vi.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
     const service = new SessionsService({} as Config, prisma, backend, {} as EventStore);
     const internals = service as unknown as { watchRetryMs: number; watch: (s: string, c: string, b: string) => Promise<void> };
     internals.watchRetryMs = 0;
-    return { update, backend, listSandboxes, watch: () => internals.watch("s", "c", "/tmp/x") };
+    return { update, backend, listSandboxes, calls, watch: () => internals.watch("s", "c", "/tmp/x") };
   }
 
   it("ends the session once the backend confirms the sandbox is gone", async () => {
-    const { update, backend, watch } = setup([[]]);
+    const { update, backend, calls, watch } = setup([[]]);
     await watch();
     expect(backend.waitForExit).toHaveBeenCalledTimes(5);
+    // The logs are saved once, before the sandbox is removed.
+    expect(calls).toEqual(["saveLogs", "remove", "remove"]);
     expect(backend.remove).toHaveBeenCalledWith("c");
     expect(update).toHaveBeenCalledWith({ where: { id: "s" }, data: expect.objectContaining({ exitCode: 137, endedAt: expect.any(Date) }) });
   });

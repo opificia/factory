@@ -192,6 +192,15 @@ export class SessionsService {
    */
   private async watch(sessionId: string, containerId: string, base: string): Promise<void> {
     let exitCode = GONE_EXIT_CODE;
+    // The logs go before the sandbox does, once.
+    let logsSaved = false;
+    const saveLogs = async () => {
+      if (logsSaved) return;
+      logsSaved = await this.sandboxes.saveLogs(containerId, join(base, "container.log")).then(
+        () => true,
+        () => false,
+      );
+    };
     for (let attempt = 1; ; attempt++) {
       try {
         exitCode = await this.sandboxes.waitForExit(containerId);
@@ -199,6 +208,7 @@ export class SessionsService {
       } catch (error) {
         this.logger.warn(`watching ${shortId(containerId)} (attempt ${attempt}): ${(error as Error).message}`);
         if (attempt >= WATCH_ATTEMPTS) {
+          await saveLogs();
           await this.sandboxes.remove(containerId);
           if (await this.gone(containerId)) break;
           this.logger.warn(`could not remove ${shortId(containerId)}; its session keeps its place and the worker tries again`);
@@ -206,7 +216,7 @@ export class SessionsService {
         await sleep(Math.min(attempt, WATCH_ATTEMPTS) * this.watchRetryMs);
       }
     }
-    await this.sandboxes.saveLogs(containerId, join(base, "container.log")).catch(() => undefined);
+    await saveLogs();
     await this.sandboxes.remove(containerId);
     await this.onExit(sessionId, exitCode);
   }
