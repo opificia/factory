@@ -9,6 +9,7 @@ import { Inject, Injectable, Logger, type OnModuleDestroy } from "@nestjs/common
 import { WebSocketServer } from "ws";
 import { CONFIG, type Config } from "../config.js";
 import { decideHost, isPublicAddress } from "./egress-policy.js";
+import { serveFiles } from "./files.js";
 import { SessionsService } from "./sessions.service.js";
 
 /** Model API paths a sandbox may call. Everything else is refused. */
@@ -46,9 +47,11 @@ async function resolve(host: string): Promise<Array<{ address: string }>> {
 
 /**
  * The server sandboxes talk to, on its own port, apart from the API that
- * people use. It serves two things:
+ * people use. It serves four things:
  *
  * - `/runner`: the runner protocol, over a WebSocket;
+ * - `/files/<name>`: the repository bundle a sandbox downloads and the result
+ *   bundle it uploads, in place of a shared folder (ADR-0010);
  * - `/model/<session>/...`: a pass-through proxy to the model API that adds
  *   the operator's API key. The key never enters a sandbox;
  * - `CONNECT host:443`: the egress proxy (ADR-0007). It applies the network
@@ -213,6 +216,17 @@ export class SandboxGateway implements OnModuleDestroy {
   }
 
   private async handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const file = /^\/files\/([^/?]+)$/.exec(req.url ?? "");
+    if (file) {
+      const token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+      const session = token ? this.sessions.authorizeRunner(token) : undefined;
+      if (!session) {
+        res.writeHead(401, { "content-type": "text/plain" }).end("unknown sandbox session\n");
+        return;
+      }
+      await serveFiles(req, res, file[1]!, this.sessions.dirs(session.runId, session.sessionId));
+      return;
+    }
     const match = /^\/model\/([0-9a-f-]{36})(\/.*)$/.exec(req.url ?? "");
     if (!match) {
       res.writeHead(404).end();

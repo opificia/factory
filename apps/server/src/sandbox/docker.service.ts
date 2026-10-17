@@ -32,8 +32,6 @@ export type SandboxSpec = {
   sessionId: string;
   runId: string;
   image: string;
-  inDir: string;
-  outDir: string;
   env: Record<string, string>;
 };
 
@@ -100,8 +98,8 @@ export class DockerService {
 
   /**
    * Starts a sandbox: no route to the internet, no capabilities, a read-only
-   * root file system, limits on memory, CPU and processes. The repository
-   * comes in read-only; only /out is written back to the host.
+   * root file system, limits on memory, CPU and processes. Nothing of the
+   * host is mounted: files travel over the gateway (ADR-0010).
    */
   async startSandbox(spec: SandboxSpec): Promise<string> {
     const container = await this.docker.createContainer({
@@ -112,7 +110,6 @@ export class DockerService {
       Labels: { "opificia.role": "sandbox", "opificia.run": spec.runId, "opificia.session": spec.sessionId },
       HostConfig: {
         NetworkMode: SANDBOX_NETWORK,
-        Binds: [`${spec.inDir}:/in:ro`, `${spec.outDir}:/out:rw`],
         Tmpfs: {
           "/work": "rw,exec,size=4g,mode=1777",
           "/tmp": "rw,exec,size=1g,mode=1777",

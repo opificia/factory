@@ -93,7 +93,7 @@ Each run has a budget of 15 USD and 60 minutes of agent time; the time spent wai
 - reaches other hosts only through the egress proxy in that port, and only in the implementation stage (see [Network access](#network-access));
 - runs as an unprivileged user, with no Linux capabilities and a read-only root file system;
 - has limits on memory, CPU and processes;
-- receives the repository as a read-only git bundle and returns its result as a git bundle.
+- shares no folder with the host: it downloads the repository as a git bundle from the gateway, and uploads its result as a git bundle the same way.
 
 **Keys stay outside the sandbox.** Claude Code in the sandbox sends model requests to the server, which checks a token for that stage and adds your Anthropic API key. The GitHub token never enters the sandbox: the server pushes the branch itself, with an installation token limited to one repository.
 
