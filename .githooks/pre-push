@@ -16,6 +16,7 @@ set -euo pipefail
 
 zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"
 missing=0
+foreign=0
 
 while read -r _ local_sha _ remote_sha; do
   # Deleting a remote branch: nothing to check.
@@ -29,14 +30,39 @@ while read -r _ local_sha _ remote_sha; do
   fi
 
   for sha in $(git rev-list --no-merges "${range[@]}"); do
+    # The same rule as the DCO check (.github/scripts/dco-check.sh): every
+    # line that reads as a sign-off must be exactly the author's.
     author_email="$(git show -s --format='%ae' "$sha")"
-    signoffs="$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
-    if ! grep -qiF "<${author_email}>" <<< "$signoffs"; then
+    author_name="$(git show -s --format='%an' "$sha")"
+    own=0
+    other=0
+    while IFS= read -r line; do
+      shopt -s nocasematch
+      if [[ "$line" =~ ^Signed-off-by:\ ([^\<\>]+)\ \<([^\<\>]+)\>$ ]] &&
+        [[ "${BASH_REMATCH[1]}" == "$author_name" ]] && [[ "${BASH_REMATCH[2]}" == "$author_email" ]]; then
+        own=1
+      else
+        other=1
+      fi
+      shopt -u nocasematch
+    done < <(git show -s --format='%B' "$sha" | tr -d '\r' | LC_ALL=C grep -iE '^[^[:alnum:]]*signed[^[:alnum:]]*off[^[:alnum:]]*by' || true)
+    if [ "$other" -eq 1 ]; then
+      echo "sign-off not by the author: $(git show -s --format='%h %s' "$sha")" >&2
+      foreign=1
+    elif [ "$own" -eq 0 ]; then
       echo "missing sign-off: $(git show -s --format='%h %s' "$sha")" >&2
       missing=1
     fi
   done
 done
+
+if [ "$foreign" -ne 0 ]; then
+  echo >&2
+  echo "Push refused: some commits carry a sign-off that is not exactly their author's," >&2
+  echo "\"Signed-off-by: Name <email>\" as in the commit's author. Each person signs off" >&2
+  echo "their own commits; a maintainer's /signoff does not cover these." >&2
+  exit 1
+fi
 
 if [ "$missing" -ne 0 ] && [ "$(git config --get opificia.signoff || true)" = approval ]; then
   echo >&2

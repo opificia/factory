@@ -70,22 +70,38 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
   summary="$(git show -s --format='%h %s' "$sha")"
   # Every line that reads as a sign-off counts, in the trailers or anywhere
   # else in the message: commits reach main as they are (ADR-0012), and a
-  # line in someone else's name there reads as their certification.
-  signoffs="$(git show -s --format='%B' "$sha" | grep -iE '^[[:space:]]*signed-off-by[[:space:]]*:' || true)"
-  if [ -n "$signoffs" ] && ! grep -viqF "<${author_email}>" <<< "$signoffs"; then
-    echo "ok      $summary"
+  # line in someone else's name there reads as their certification. A line
+  # counts when it reads as one to a person, whatever stands between the
+  # words, such as other hyphens; it is the author's only when it is exactly
+  # "Signed-off-by: <author's name> <<author's email>>".
+  author_name="$(git show -s --format='%an' "$sha")"
+  own=0
+  foreign=0
+  while IFS= read -r line; do
+    shopt -s nocasematch
+    if [[ "$line" =~ ^Signed-off-by:\ ([^\<\>]+)\ \<([^\<\>]+)\>$ ]] &&
+      [[ "${BASH_REMATCH[1]}" == "$author_name" ]] && [[ "${BASH_REMATCH[2]}" == "$author_email" ]]; then
+      own=1
+    else
+      foreign=1
+    fi
+    shopt -u nocasematch
+  done < <(git show -s --format='%B' "$sha" | tr -d '\r' | LC_ALL=C grep -iE '^[^[:alnum:]]*signed[^[:alnum:]]*off[^[:alnum:]]*by' || true)
+  if [ "$foreign" -eq 1 ]; then
+    echo "missing $summary (it carries a sign-off that is not exactly its author's: \"Signed-off-by: $author_name <$author_email>\". Each person signs off their own commits)"
+    missing=1
     continue
   fi
-  if [ -n "$signoffs" ] && grep -qiF "<${author_email}>" <<< "$signoffs"; then
-    echo "missing $summary (it also carries a sign-off for someone other than its author; each person signs off their own commits)"
-    missing=1
+  if [ "$own" -eq 1 ]; then
+    echo "ok      $summary"
     continue
   fi
   if [ "$same_repo" -eq 1 ] && [ "$approvers_loaded" -eq 0 ]; then
     approvers > "$work/approvers"
     approvers_loaded=1
   fi
-  if [ "$same_repo" -eq 1 ] && [ -s "$work/approvers" ] && [ -z "$signoffs" ]; then
+  # Only commits without any sign-off line reach this point.
+  if [ "$same_repo" -eq 1 ] && [ -s "$work/approvers" ]; then
     if is_bot_commit "$author_email"; then
       echo "ok      $summary (by the bot that opened the pull request; a maintainer approved it with /signoff and signs off in the merge commit)"
       continue
