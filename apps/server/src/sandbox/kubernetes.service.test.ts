@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { Logger } from "@nestjs/common";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SandboxPodSettings, type Config } from "../config.js";
-import { KubernetesService, probePod, sandboxPod, sandboxSecret } from "./kubernetes.service.js";
+import { KubernetesService, judgeProbe, probePod, sandboxPod, sandboxSecret, type ProbeResult } from "./kubernetes.service.js";
 
 const settings = (json = "{}") => SandboxPodSettings.parse(json);
 const spec = { sessionId: "5b0c7d1e-0000-4000-8000-000000000001", runId: "r1", image: "registry.example/harness:1", env: { A: "b" } };
@@ -34,7 +34,7 @@ describe("sandboxPod", () => {
 
   it("carries the labels of the network policy and keeps its node", () => {
     expect(pod.metadata.labels).toMatchObject({ "opificia.role": "sandbox", "opificia.session": spec.sessionId, "opificia.run": "r1" });
-    expect(pod.metadata.annotations["cluster-autoscaler.kubernetes.io/safe-to-evict"]).toBe("false");
+    expect(pod.metadata.annotations).toEqual({ "cluster-autoscaler.kubernetes.io/safe-to-evict": "false", "karpenter.sh/do-not-disrupt": "true" });
   });
 
   it("asks for its resources, so a node autoscaler can make room", () => {
@@ -99,13 +99,49 @@ describe("probePod", () => {
       ],
     });
   });
+
+  it("runs the control on the same nodes, outside the sandbox policy and without the gateway", () => {
+    const pod = probePod({ name: "c", image: "s", gatewayIp: "10.0.0.7", gatewayPort: 3001, targets: [], settings: settings('{"nodeSelector":{"a":"b"}}'), control: true });
+    expect(pod.metadata.labels["opificia.role"]).toBe("network-control");
+    expect(pod.spec.nodeSelector).toEqual({ a: "b" });
+    expect(pod.spec.containers[0]).toMatchObject({ env: [{ name: "PROBE_TARGETS", value: "[]" }] });
+  });
+});
+
+describe("judgeProbe", () => {
+  const judge = (sandbox: ProbeResult, control: ProbeResult) => judgeProbe(sandbox, control, "opificia-sandbox");
+
+  it("lets sandboxes start when the policy blocks what the control reaches", () => {
+    expect(judge({ gateway: true, reached: [] }, { gateway: false, reached: ["10.96.0.1:443"] })).toMatchObject({ ok: true });
+  });
+
+  it("refuses when a sandbox reaches a target", () => {
+    expect(judge({ gateway: true, reached: ["1.1.1.1:443"] }, { gateway: false, reached: ["1.1.1.1:443"] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("can reach 1.1.1.1:443 directly"),
+    });
+  });
+
+  it("refuses when a sandbox cannot reach the worker", () => {
+    expect(judge({ gateway: false, reached: [] }, { gateway: false, reached: ["10.96.0.1:443"] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("cannot reach the worker"),
+    });
+  });
+
+  it("refuses when a firewall blocks the control too, because that proves nothing", () => {
+    expect(judge({ gateway: true, reached: [] }, { gateway: false, reached: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("inconclusive"),
+    });
+  });
 });
 
 describe("KubernetesService", () => {
   let server: Server;
   let url: string;
   const requests: Array<{ method: string; path: string; body?: { metadata?: { name?: string; ownerReferences?: unknown[] }; stringData?: unknown } }> = [];
-  let probeExit = 0;
+  let probes: { sandbox: ProbeResult; control: ProbeResult } = { sandbox: { gateway: true, reached: [] }, control: { gateway: false, reached: ["10.96.0.1:443"] } };
 
   beforeAll(async () => {
     server = createServer((req, res) => {
@@ -122,11 +158,11 @@ describe("KubernetesService", () => {
         }
         if (req.method === "POST") return json(201, {});
         if (req.method === "DELETE") return json(200, {});
-        if (/\/pods\/opificia-network-probe-[0-9a-f]+\/log$/.test(path)) {
-          return res.writeHead(200).end(["reached the gateway and nothing else", "reached 1.1.1.1:443", "could not reach the gateway at gateway:3001"][probeExit]);
-        }
-        if (/\/pods\/opificia-network-probe-/.test(path)) {
-          return json(200, { status: { phase: probeExit ? "Failed" : "Succeeded", containerStatuses: [{ state: { terminated: { exitCode: probeExit } } }] } });
+        const probe = /\/pods\/opificia-network-(probe|control)-[0-9a-f]+(\/log)?$/.exec(path);
+        if (probe) {
+          const result = probe[1] === "probe" ? probes.sandbox : probes.control;
+          if (probe[2]) return res.writeHead(200).end(JSON.stringify(result));
+          return json(200, { status: { phase: "Succeeded", containerStatuses: [{ state: { terminated: { exitCode: 0 } } }] } });
         }
         if (path.endsWith("/pods/opificia-run-done")) {
           return json(200, { status: { phase: "Failed", containerStatuses: [{ state: { terminated: { exitCode: 3 } } }] } });
@@ -161,13 +197,14 @@ describe("KubernetesService", () => {
 
   it("finds the gateway, probes the network and starts pods", async () => {
     vi.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
-    probeExit = 0;
+    probes = { sandbox: { gateway: true, reached: [] }, control: { gateway: false, reached: ["10.96.0.1:443"] } };
     const kube = service();
     await kube.prepare();
     expect(kube.gatewayUrl).toBe("gateway:3001");
-    const probe = requests.find((r) => r.method === "POST");
-    expect(probe?.body?.metadata?.name).toMatch(/^opificia-network-probe-/);
-    expect(requests.some((r) => r.method === "DELETE" && r.path.includes("opificia-network-probe-"))).toBe(true);
+    const created = requests.filter((r) => r.method === "POST").map((r) => r.body?.metadata?.name);
+    expect(created).toEqual([expect.stringMatching(/^opificia-network-probe-/), expect.stringMatching(/^opificia-network-control-/)]);
+    const deleted = requests.filter((r) => r.method === "DELETE").map((r) => r.path);
+    expect(deleted).toEqual([expect.stringContaining("opificia-network-probe-"), expect.stringContaining("opificia-network-control-")]);
 
     requests.length = 0;
     expect(await kube.startSandbox(spec)).toBe(`opificia-run-${spec.sessionId}`);
@@ -182,13 +219,8 @@ describe("KubernetesService", () => {
   });
 
   it("refuses to run sandboxes when the cluster does not enforce the network policy", async () => {
-    probeExit = 1;
-    await expect(service().prepare()).rejects.toThrow(/can reach addresses directly .*\(reached 1\.1\.1\.1:443\)/);
-    expect(requests.some((r) => r.method === "DELETE" && r.path.includes("opificia-network-probe-"))).toBe(true);
-  });
-
-  it("refuses to run sandboxes that cannot reach the worker", async () => {
-    probeExit = 2;
-    await expect(service().prepare()).rejects.toThrow(/a sandbox cannot reach the worker \(could not reach the gateway at gateway:3001\)/);
+    probes = { sandbox: { gateway: true, reached: ["1.1.1.1:443"] }, control: { gateway: false, reached: ["1.1.1.1:443"] } };
+    await expect(service().prepare()).rejects.toThrow(/can reach 1\.1\.1\.1:443 directly/);
+    expect(requests.filter((r) => r.method === "DELETE")).toHaveLength(2);
   });
 });
