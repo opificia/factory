@@ -45,6 +45,29 @@ describe("serveFiles", () => {
     expect(await readFile(join(dirs().outDir, "result.bundle"), "utf8")).toBe("the result");
   });
 
+  it("keeps only the latest upload of a session", async () => {
+    expect((await fetch(`${base}first.bundle`, { method: "PUT", body: "one" })).status).toBe(204);
+    expect((await fetch(`${base}second.bundle`, { method: "PUT", body: "two" })).status).toBe(204);
+    expect(await readdir(dirs().outDir)).toEqual(["second.bundle"]);
+  });
+
+  it("takes one upload at a time", async () => {
+    let send!: (chunk: string) => void;
+    let finish!: () => void;
+    const body = new ReadableStream({
+      start(controller) {
+        send = (chunk) => controller.enqueue(new TextEncoder().encode(chunk));
+        finish = () => controller.close();
+      },
+    });
+    const slow = fetch(`${base}slow.bundle`, { method: "PUT", body, duplex: "half" } as RequestInit);
+    send("partly");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await fetch(`${base}fast.bundle`, { method: "PUT", body: "x" })).status).toBe(409);
+    finish();
+    expect((await slow).status).toBe(204);
+  });
+
   it("refuses names that are not bundles, or that leave the folder", async () => {
     for (const name of ["secret.txt", "..%2Frepo.bundle", ".bundle", "missing.bundle"]) {
       expect((await fetch(`${base}${name}`)).status).toBe(404);
