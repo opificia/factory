@@ -35,7 +35,7 @@ const ADMISSION_LOCK = 0x6f706966;
  * A completed or stopped session may still have a sandbox shutting down.
  */
 const BUSY = { endedAt: null };
-/** How often the worker tries to follow a sandbox to its exit, and the pause between tries, growing each time. */
+/** How often the worker tries to follow a sandbox to its exit before it removes it, and the pause between tries, growing each time. */
 const WATCH_ATTEMPTS = 5;
 const WATCH_RETRY_MS = 10_000;
 /** The exit code recorded when a sandbox's own is unknown, as for a killed process. */
@@ -185,8 +185,10 @@ export class SessionsService {
 
   /**
    * Waits for a sandbox to exit, then ends its session. If the backend keeps
-   * failing to report the exit, the sandbox is removed and the session ends
-   * anyway, so it does not hold a place under the cap for ever.
+   * failing to report the exit, the worker removes the sandbox, and ends the
+   * session only once the backend confirms the sandbox is gone. Until then
+   * the session keeps its place under the cap: ending it while the sandbox
+   * still ran would let more sandboxes run than the cap allows.
    */
   private async watch(sessionId: string, containerId: string, base: string): Promise<void> {
     let exitCode = GONE_EXIT_CODE;
@@ -195,14 +197,27 @@ export class SessionsService {
         exitCode = await this.sandboxes.waitForExit(containerId);
         break;
       } catch (error) {
-        this.logger.warn(`watching ${shortId(containerId)} (attempt ${attempt} of ${WATCH_ATTEMPTS}): ${(error as Error).message}`);
-        if (attempt >= WATCH_ATTEMPTS) break;
-        await sleep(attempt * this.watchRetryMs);
+        this.logger.warn(`watching ${shortId(containerId)} (attempt ${attempt}): ${(error as Error).message}`);
+        if (attempt >= WATCH_ATTEMPTS) {
+          await this.sandboxes.remove(containerId);
+          if (await this.gone(containerId)) break;
+          this.logger.warn(`could not remove ${shortId(containerId)}; its session keeps its place and the worker tries again`);
+        }
+        await sleep(Math.min(attempt, WATCH_ATTEMPTS) * this.watchRetryMs);
       }
     }
     await this.sandboxes.saveLogs(containerId, join(base, "container.log")).catch(() => undefined);
     await this.sandboxes.remove(containerId);
     await this.onExit(sessionId, exitCode);
+  }
+
+  /** Whether the backend confirms that a sandbox no longer exists. If it cannot say, the sandbox counts as present. */
+  private async gone(containerId: string): Promise<boolean> {
+    try {
+      return (await this.sandboxes.listSandboxes()).every((s) => s.id !== containerId);
+    } catch {
+      return false;
+    }
   }
 
   /** Starts the sandbox; if that fails, there is none, so the session ends. */

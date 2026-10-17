@@ -56,25 +56,42 @@ describe("SessionsService.stopRun", () => {
 });
 
 describe("SessionsService watching a sandbox", () => {
-  it("ends the session when the backend keeps failing to report the exit", async () => {
+  function setup(listings: Array<Array<{ id: string; sessionId: string }> | Error>) {
     const update = vi.fn(() => Promise.resolve({}));
     const prisma = {
       sandboxSession: { findUnique: vi.fn(() => Promise.resolve({ id: "s", status: "completed", runId: "r", orgId: "o", stage: "plan" })), update },
     } as unknown as PrismaService;
+    const listSandboxes = vi.fn(() => {
+      const next = listings.shift() ?? [];
+      return next instanceof Error ? Promise.reject(next) : Promise.resolve(next);
+    });
     const backend = {
       waitForExit: vi.fn(() => Promise.reject(new Error("socket hang up"))),
       saveLogs: vi.fn(() => Promise.resolve()),
       remove: vi.fn(() => Promise.resolve()),
+      listSandboxes,
     } as unknown as SandboxBackend;
     vi.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
     const service = new SessionsService({} as Config, prisma, backend, {} as EventStore);
     const internals = service as unknown as { watchRetryMs: number; watch: (s: string, c: string, b: string) => Promise<void> };
     internals.watchRetryMs = 0;
+    return { update, backend, listSandboxes, watch: () => internals.watch("s", "c", "/tmp/x") };
+  }
 
-    await internals.watch("s", "c", "/tmp/x");
-
+  it("ends the session once the backend confirms the sandbox is gone", async () => {
+    const { update, backend, watch } = setup([[]]);
+    await watch();
     expect(backend.waitForExit).toHaveBeenCalledTimes(5);
     expect(backend.remove).toHaveBeenCalledWith("c");
     expect(update).toHaveBeenCalledWith({ where: { id: "s" }, data: expect.objectContaining({ exitCode: 137, endedAt: expect.any(Date) }) });
+  });
+
+  it("keeps the session's place while the sandbox may still run", async () => {
+    // Still listed, then the listing fails, then it is gone.
+    const { update, listSandboxes, backend, watch } = setup([[{ id: "c", sessionId: "s" }], new Error("down"), []]);
+    await watch();
+    expect(listSandboxes).toHaveBeenCalledTimes(3);
+    expect(backend.waitForExit).toHaveBeenCalledTimes(7);
+    expect(update).toHaveBeenCalledTimes(1);
   });
 });
