@@ -15,7 +15,7 @@ function sessions(busy: number) {
   const tx = {
     $executeRaw: vi.fn((parts: TemplateStringsArray) => (calls.push(parts.join("?")), Promise.resolve(1))),
     sandboxSession: {
-      count: vi.fn(() => (calls.push("count"), Promise.resolve(busy))),
+      count: vi.fn((query: unknown) => (calls.push(`count ${JSON.stringify(query)}`), Promise.resolve(busy))),
       create: vi.fn(() => (calls.push("create"), Promise.resolve({}))),
     },
   };
@@ -30,12 +30,26 @@ describe("SessionsService.create", () => {
   it("admits a session under the lock while there is room", async () => {
     const { service, calls } = sessions(3);
     await expect(service.create(input)).resolves.toMatch(/^[\w-]{43}$/);
-    expect(calls).toEqual(["SELECT pg_advisory_xact_lock(?::bigint)", "count", "create"]);
+    // A session counts until its sandbox is gone, whatever its status.
+    expect(calls).toEqual(["SELECT pg_advisory_xact_lock(?::bigint)", 'count {"where":{"endedAt":null}}', "create"]);
   });
 
   it("defers a session when every sandbox is busy, and records nothing", async () => {
     const { service, calls } = sessions(4);
     await expect(service.create(input)).rejects.toBeInstanceOf(Deferred);
     expect(calls).not.toContain("create");
+  });
+});
+
+describe("SessionsService.stopRun", () => {
+  it("keeps a stopped session counted until its sandbox exits", async () => {
+    const update = vi.fn(() => Promise.resolve({}));
+    const prisma = {
+      sandboxSession: { findMany: vi.fn(() => Promise.resolve([{ id: "s", containerId: "c" }])), update },
+    } as unknown as PrismaService;
+    const backend = { stop: vi.fn(() => Promise.resolve()) } as unknown as SandboxBackend;
+    await new SessionsService({} as Config, prisma, backend, {} as EventStore).stopRun("r", "cancelled");
+    expect(update).toHaveBeenCalledWith({ where: { id: "s" }, data: { status: "stopped" } });
+    expect(backend.stop).toHaveBeenCalledWith("c");
   });
 });

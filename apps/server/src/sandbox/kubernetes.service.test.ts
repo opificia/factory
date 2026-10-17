@@ -89,7 +89,8 @@ describe("probePod", () => {
       targets: ["1.1.1.1:443"],
       settings: settings('{"nodeSelector":{"a":"b"},"runtimeClassName":"gvisor"}'),
     });
-    expect(pod.metadata.labels["opificia.role"]).toBe("sandbox");
+    // Every label a sandbox carries, so every policy that selects sandboxes selects the probe.
+    expect(pod.metadata.labels).toMatchObject({ "opificia.role": "sandbox", "opificia.run": "network-probe", "opificia.session": "network-probe" });
     expect(pod.spec).toMatchObject({ nodeSelector: { a: "b" }, runtimeClassName: "gvisor", hostAliases: [{ ip: "10.0.0.7" }] });
     expect(pod.spec.containers[0]).toMatchObject({
       command: ["node", "-e", expect.stringContaining("net.connect")],
@@ -141,9 +142,10 @@ describe("KubernetesService", () => {
   let server: Server;
   let url: string;
   const requests: Array<{ method: string; path: string; body?: { metadata?: { name?: string; ownerReferences?: unknown[] }; stringData?: unknown; spec?: unknown } }> = [];
+  const worker = { "app.kubernetes.io/component": "worker" };
   const tight = {
     metadata: { name: "opificia-sandbox" },
-    spec: { podSelector: { matchLabels: { "opificia.role": "sandbox" } }, policyTypes: ["Egress"], egress: [{ to: [{ podSelector: {} }], ports: [{ port: 3001 }] }] },
+    spec: { podSelector: { matchLabels: { "opificia.role": "sandbox" } }, policyTypes: ["Egress"], egress: [{ to: [{ podSelector: { matchLabels: worker } }], ports: [{ port: 3001 }] }] },
   };
   let policies: unknown[] = [tight];
   let probes: { sandbox: ProbeResult; control: ProbeResult } = { sandbox: { gateway: true, reached: [] }, control: { gateway: false, reached: ["10.96.0.1:443"] } };
@@ -156,7 +158,7 @@ describe("KubernetesService", () => {
         const path = req.url ?? "";
         requests.push({ method: req.method ?? "", path, body: raw ? JSON.parse(raw) : undefined });
         const json = (status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
-        if (path === "/api/v1/namespaces/opificia/services/opificia-sandbox") return json(200, { spec: { clusterIP: "10.0.0.7", ports: [{ port: 3001 }] } });
+        if (path === "/api/v1/namespaces/opificia/services/opificia-sandbox") return json(200, { spec: { clusterIP: "10.0.0.7", ports: [{ port: 3001 }], selector: worker } });
         if (path === "/apis/networking.k8s.io/v1/namespaces/opificia/networkpolicies") return json(200, { items: policies });
         if (req.method === "POST" && path.endsWith("/pods")) {
           const name = (JSON.parse(raw) as { metadata: { name: string } }).metadata.name;
@@ -186,6 +188,7 @@ describe("KubernetesService", () => {
   afterAll(() => new Promise((resolve) => server.close(resolve)));
   afterEach(() => {
     requests.length = 0;
+    policies = [tight];
     vi.restoreAllMocks();
   });
 
@@ -231,7 +234,6 @@ describe("KubernetesService", () => {
     policies = [tight, { metadata: { name: "allow-all" }, spec: { podSelector: {}, policyTypes: ["Egress"], egress: [{}] } }];
     await expect(service().prepare()).rejects.toThrow(/allow-all lets sandboxes reach any address/);
     expect(requests.some((r) => r.method === "POST")).toBe(false);
-    policies = [tight];
   });
 
   it("refuses to run sandboxes when the cluster does not enforce the network policy", async () => {

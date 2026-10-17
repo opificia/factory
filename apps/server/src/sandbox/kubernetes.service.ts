@@ -25,6 +25,9 @@ const GONE_EXIT_CODE = 137;
 /** The end of a sandbox's log that the worker keeps, within the API client's limit. */
 const LOG_QUERY = `timestamps=true&tailLines=20000&limitBytes=${8 * 1024 * 1024}`;
 
+/** Labels on every sandbox pod whose values differ per pod. */
+const PER_POD_LABELS = ["opificia.run", "opificia.session"] as const;
+
 const LABELS = { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" };
 
 type Pod = {
@@ -203,7 +206,10 @@ export function probePod(options: {
 }) {
   // The control pod's role does not match the policy's selector.
   const labels: Record<string, string> = options.control ? { "opificia.role": "network-control" } : {};
-  const pod = basePod({ ...options, labels: { ...labels, "opificia.probe": "network" }, deadlineSeconds: PROBE_TIMEOUT_MS / 1000 });
+  // The probe carries every label a sandbox carries, so every policy that
+  // selects sandboxes selects it too.
+  const perPod: Record<string, string> = options.control ? {} : Object.fromEntries(PER_POD_LABELS.map((key) => [key, "network-probe"]));
+  const pod = basePod({ ...options, labels: { ...labels, ...perPod, "opificia.probe": "network" }, deadlineSeconds: PROBE_TIMEOUT_MS / 1000 });
   Object.assign(pod.spec.containers[0]!, {
     command: ["node", "-e", PROBE],
     env: [
@@ -262,7 +268,7 @@ export class KubernetesService implements SandboxBackend {
   private readonly logger = new Logger(KubernetesService.name);
   private readonly api: KubeApi;
   private readonly namespace: string;
-  private gateway?: { ip: string; port: number };
+  private gateway?: { ip: string; port: number; selector: Record<string, string> };
 
   /** Long enough for a new node to start and pull the sandbox image. */
   readonly helloTimeoutMs = 18 * 60 * 1000;
@@ -284,11 +290,14 @@ export class KubernetesService implements SandboxBackend {
   /** Finds the gateway service and checks that the cluster enforces the sandbox network policy. */
   async prepare(): Promise<void> {
     const name = this.config.OPIFICIA_KUBERNETES_GATEWAY_SERVICE;
-    const service = await this.api.json<{ spec?: { clusterIP?: string; ports?: Array<{ port: number }> } }>("GET", this.path(`services/${name}`));
+    const service = await this.api.json<{ spec?: { clusterIP?: string; ports?: Array<{ port: number }>; selector?: Record<string, string> } }>(
+      "GET",
+      this.path(`services/${name}`),
+    );
     const ip = service.spec?.clusterIP;
     const port = service.spec?.ports?.[0]?.port;
     if (!ip || ip === "None" || !port) throw new Error(`the service ${name} has no cluster IP and port; sandboxes reach the worker through it`);
-    this.gateway = { ip, port };
+    this.gateway = { ip, port, selector: service.spec?.selector ?? {} };
     this.logger.log(`sandboxes run as pods in the namespace ${this.namespace} and reach the worker at ${ip}:${port}`);
     if (this.config.OPIFICIA_KUBERNETES_NETWORK_PROBE === "on") {
       await this.checkPolicies();
@@ -309,7 +318,11 @@ export class KubernetesService implements SandboxBackend {
       }
       throw error;
     });
-    const problems = sandboxEgressProblems(list.items, LABELS, this.config.OPIFICIA_SANDBOX_PORT);
+    const problems = sandboxEgressProblems(
+      list.items,
+      { labels: LABELS, anyValue: PER_POD_LABELS },
+      { selector: this.gateway!.selector, port: this.config.OPIFICIA_SANDBOX_PORT },
+    );
     if (problems.length > 0) {
       throw new Error(`the network policies would let sandboxes bypass the egress proxy: ${problems.join("; ")}`);
     }

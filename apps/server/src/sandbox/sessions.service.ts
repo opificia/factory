@@ -28,7 +28,12 @@ import { EgressBudget } from "./egress-policy.js";
 export const WAIT_FOR_ROOM_MS = 30_000;
 /** Key of the PostgreSQL advisory lock under which sessions are admitted. */
 const ADMISSION_LOCK = 0x6f706966;
-const BUSY = ["starting", "running"];
+/**
+ * A session holds a place until its sandbox is gone: `endedAt` is set only
+ * when the sandbox has exited, or when there never was or no longer is one.
+ * A completed or stopped session may still have a sandbox shutting down.
+ */
+const BUSY = { endedAt: null };
 /** Progress events kept per stage; more are dropped. */
 const MAX_EVENTS_PER_SESSION = 3000;
 /** Lines written to a session's egress log; more are dropped. */
@@ -89,14 +94,14 @@ export class SessionsService {
     return dirs;
   }
 
-  /** Whether `limit` sandboxes are starting or running already. A hint only: `create` decides. */
+  /** Whether `limit` sandboxes exist already. A hint only: `create` decides. */
   async full(limit: number): Promise<boolean> {
-    return (await this.prisma.sandboxSession.count({ where: { status: { in: BUSY } } })) >= limit;
+    return (await this.prisma.sandboxSession.count({ where: BUSY })) >= limit;
   }
 
   /**
    * Records a session and returns its secret token, if fewer than `limit`
-   * sandboxes are starting or running; otherwise throws `Deferred`. Workers
+   * sandboxes exist; otherwise throws `Deferred`. Workers
    * admit sessions one at a time under a database lock, so the limit holds
    * across all of them.
    */
@@ -104,7 +109,7 @@ export class SessionsService {
     const token = randomBytes(32).toString("base64url");
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMISSION_LOCK}::bigint)`;
-      const busy = await tx.sandboxSession.count({ where: { status: { in: BUSY } } });
+      const busy = await tx.sandboxSession.count({ where: BUSY });
       if (busy >= input.limit) throw new Deferred(`all ${input.limit} sandboxes are busy`, WAIT_FOR_ROOM_MS);
       await tx.sandboxSession.create({
         data: {
@@ -144,7 +149,7 @@ export class SessionsService {
       this.egressBudgets.set(sessionId, new EgressBudget());
       env.OPIFICIA_EGRESS_PROXY = `http://${sessionId}:${egressToken}@${gateway}`;
     }
-    const containerId = await this.sandboxes.startSandbox({
+    const containerId = await this.startOrEnd(sessionId, {
       sessionId,
       runId: session.runId,
       image: this.config.OPIFICIA_SANDBOX_IMAGE,
@@ -174,6 +179,16 @@ export class SessionsService {
         await this.onExit(sessionId, exitCode);
       })
       .catch((error: Error) => this.logger.error(`watching ${containerId}: ${error.message}`));
+  }
+
+  /** Starts the sandbox; if that fails, there is none, so the session ends. */
+  private async startOrEnd(sessionId: string, spec: Parameters<SandboxBackend["startSandbox"]>[0]): Promise<string> {
+    try {
+      return await this.sandboxes.startSandbox(spec);
+    } catch (error) {
+      await this.prisma.sandboxSession.update({ where: { id: sessionId }, data: { status: "failed", endedAt: new Date() } });
+      throw error;
+    }
   }
 
   private async onExit(sessionId: string, exitCode: number): Promise<void> {
@@ -209,7 +224,8 @@ export class SessionsService {
   async stopRun(runId: string, reason: string): Promise<void> {
     const sessions = await this.prisma.sandboxSession.findMany({ where: { runId, status: { in: ["starting", "running"] } } });
     for (const session of sessions) {
-      await this.prisma.sandboxSession.update({ where: { id: session.id }, data: { status: "stopped", endedAt: new Date() } });
+      // The sandbox ends when it exits (onExit), which sets endedAt.
+      await this.prisma.sandboxSession.update({ where: { id: session.id }, data: { status: "stopped" } });
       const active = this.active.get(session.id);
       active?.socket?.send(JSON.stringify({ jsonrpc: "2.0", method: RunnerMethods.cancel, params: { reason } }));
       this.active.delete(session.id);
@@ -217,13 +233,17 @@ export class SessionsService {
     }
   }
 
-  /** After a restart, nothing watches old sandboxes. Stop them and fail their runs. */
+  /**
+   * After a restart, nothing watches old sandboxes. Remove them, end their
+   * sessions, and fail the runs whose sandbox was still working.
+   */
   async reconcile(): Promise<void> {
     for (const container of await this.sandboxes.listSandboxes()) await this.sandboxes.remove(container.id);
-    const stale = await this.prisma.sandboxSession.findMany({ where: { status: { in: ["starting", "running"] } } });
+    const stale = await this.prisma.sandboxSession.findMany({ where: BUSY });
     for (const session of stale) {
-      await this.prisma.sandboxSession.update({ where: { id: session.id }, data: { status: "failed", endedAt: new Date() } });
-      await this.fail(session.orgId, session.runId, "the server restarted while the sandbox was running", session.stage as Stage, session.id);
+      const working = session.status === "starting" || session.status === "running";
+      await this.prisma.sandboxSession.update({ where: { id: session.id }, data: { endedAt: new Date(), ...(working ? { status: "failed" } : {}) } });
+      if (working) await this.fail(session.orgId, session.runId, "the server restarted while the sandbox was running", session.stage as Stage, session.id);
     }
   }
 
@@ -344,7 +364,7 @@ export class SessionsService {
       void (async () => {
         const updated = await this.prisma.sandboxSession.updateMany({
           where: { id: s.sessionId, status: "running" },
-          data: { status: "failed", endedAt: new Date() },
+          data: { status: "failed" },
         });
         this.active.delete(s.sessionId);
         if (updated.count > 0) await this.fail(s.orgId, s.runId, "the sandbox disconnected before it finished", s.stage, s.sessionId);
