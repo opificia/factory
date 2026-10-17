@@ -56,16 +56,6 @@ approvers() {
 missing=0
 approvers_loaded=0
 for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
-  # A merge needs no sign-off only if it adds nothing: its tree must be what
-  # git merges on its own. Otherwise it is checked like any other commit,
-  # because a merge can carry changes that no other commit shows.
-  read -r -a parents <<< "$(git show -s --format='%P' "$sha")"
-  if [ "${#parents[@]}" -eq 2 ] &&
-    clean="$(git merge-tree --write-tree --no-messages "${parents[0]}" "${parents[1]}" 2>/dev/null)" &&
-    [ "$clean" = "$(git rev-parse "$sha^{tree}")" ]; then
-    echo "ok      $(git show -s --format='%h %s' "$sha") (merge without changes of its own)"
-    continue
-  fi
   author_email="$(git show -s --format='%ae' "$sha")"
   summary="$(git show -s --format='%h %s' "$sha")"
   # Every line that reads as a sign-off counts, in the trailers or anywhere
@@ -90,6 +80,17 @@ for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
   if [ "$foreign" -eq 1 ]; then
     echo "missing $summary (it carries a sign-off that is not exactly its author's: \"Signed-off-by: $author_name <$author_email>\". Each person signs off their own commits)"
     missing=1
+    continue
+  fi
+  # A merge needs no sign-off only if it adds nothing: its tree must be what
+  # git merges on its own. Otherwise it is checked like any other commit,
+  # because a merge can carry changes that no other commit shows. Its message
+  # is checked above like any other: it reaches main too.
+  read -r -a parents <<< "$(git show -s --format='%P' "$sha")"
+  if [ "${#parents[@]}" -eq 2 ] &&
+    clean="$(git merge-tree --write-tree --no-messages "${parents[0]}" "${parents[1]}" 2>/dev/null)" &&
+    [ "$clean" = "$(git rev-parse "$sha^{tree}")" ]; then
+    echo "ok      $summary (merge without changes of its own)"
     continue
   fi
   if [ "$own" -eq 1 ]; then

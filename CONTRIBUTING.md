@@ -150,13 +150,13 @@ fix(governance)!: correct the RFC comment period
 
 A `!` after the type marks a breaking change. Explain it in the commit body, in a `BREAKING CHANGE:` footer.
 
-Pull requests are merged with a merge commit ([ADR-0012](docs/adr/0012-merge-with-merge-commits.md)). Every commit of the branch reaches `main`, so every commit message must follow this format. The merge commit takes the pull request's title, so `git log --first-parent main` reads as a list of changes. That is why the title must follow this format too. A check enforces it.
+Pull requests are merged with a merge commit ([ADR-0012](docs/adr/0012-merge-with-merge-commits.md)). Every commit of the branch reaches `main`, so every commit message must follow this format. The merge commit takes the pull request's title, so `git log --first-parent main` reads as a list of changes. That is why the title must follow this format too. Two checks enforce it: `Commit messages` for every commit, apart from merges made by git or GitHub, and `Pull request title` for the title.
 
 ## Pull request process
 
 1. **One topic per pull request.** Small pull requests are reviewed faster.
 2. **Link the issue or Discussion** the change belongs to, if there is one.
-3. **Keep the checks green.** They check licence headers (REUSE), sign-offs, Markdown style, links and the pull request title. [`AGENTS.md`](AGENTS.md) shows how to run them locally.
+3. **Keep the checks green.** They check licence headers (REUSE), sign-offs, Markdown style, links, commit messages and the pull request title. [`AGENTS.md`](AGENTS.md) shows how to run them locally.
 4. **Review.** A code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) must approve. Policy files need approval from the steering team.
 5. **Merge.** A maintainer merges the pull request with a merge commit, usually by approving it with `/signoff` (see [Sign off at the merge](#sign-off-at-the-merge)).
 

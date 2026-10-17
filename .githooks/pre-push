@@ -29,7 +29,7 @@ while read -r _ local_sha _ remote_sha; do
     range=("${remote_sha}..${local_sha}")
   fi
 
-  for sha in $(git rev-list --no-merges "${range[@]}"); do
+  for sha in $(git rev-list "${range[@]}"); do
     # The same rule as the DCO check (.github/scripts/dco-check.sh): every
     # line that reads as a sign-off must be exactly the author's.
     author_email="$(git show -s --format='%ae' "$sha")"
@@ -49,7 +49,8 @@ while read -r _ local_sha _ remote_sha; do
     if [ "$other" -eq 1 ]; then
       echo "sign-off not by the author: $(git show -s --format='%h %s' "$sha")" >&2
       foreign=1
-    elif [ "$own" -eq 0 ]; then
+    elif [ "$own" -eq 0 ] && [ "$(git show -s --format='%P' "$sha" | wc -w)" -lt 2 ]; then
+      # Merges need no sign-off of their own, but may not carry a foreign one.
       echo "missing sign-off: $(git show -s --format='%h %s' "$sha")" >&2
       missing=1
     fi
