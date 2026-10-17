@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +18,8 @@ beforeAll(async () => {
   source = join(dir, "source");
   await git(dir, ["init", "--quiet", "--initial-branch", "main", source]);
   // A large file in the history, which the result bundle must not repeat.
-  await writeFile(join(source, "big.txt"), "x".repeat(200_000) + Math.random());
+  // Random bytes, because git would compress anything regular to nothing.
+  await writeFile(join(source, "big.bin"), randomBytes(200_000));
   await git(source, ["add", "--all"]);
   await git(source, ["-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "--quiet", "--message", "base"]);
   baseSha = (await git(source, ["rev-parse", "HEAD"])).trim();
@@ -30,6 +32,7 @@ describe("bundles in the workspace", () => {
     // As the server writes it (bundleForSandbox in apps/server/src/github/git.ts).
     const input = join(dir, "repo.bundle");
     await git(source, ["bundle", "create", "--quiet", input, "refs/heads/main"]);
+    expect((await stat(input)).size).toBeGreaterThan(150_000);
     const repo = join(dir, "work");
     await prepareWorkspace({ bundlePath: input, dir: repo, defaultBranch: "main", baseSha, branch: "opificia/1", authorName: "a", authorEmail: "a@example.org" });
     expect(existsSync(input)).toBe(false);
