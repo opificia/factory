@@ -4,7 +4,8 @@
 import { writeFile } from "node:fs/promises";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import Docker from "dockerode";
-import { CONFIG, type Config } from "../config.js";
+import { CONFIG, DEFAULT_SANDBOX_IMAGE, type Config } from "../config.js";
+import type { SandboxBackend, SandboxSpec } from "./backend.js";
 
 export const SANDBOX_NETWORK = "opificia-sandbox";
 export const GATEWAY_CONTAINER = "opificia-gateway";
@@ -28,27 +29,26 @@ net.createServer((client) => {
 }).listen(${GATEWAY_PORT}, () => console.log("gateway forwarding to " + host + ":" + port));
 `;
 
-export type SandboxSpec = {
-  sessionId: string;
-  runId: string;
-  image: string;
-  env: Record<string, string>;
-};
-
+/** Sandboxes as containers on the local Docker engine, for single-node installs. */
 @Injectable()
-export class DockerService {
+export class DockerService implements SandboxBackend {
   private readonly logger = new Logger(DockerService.name);
   private readonly docker = new Docker();
 
   constructor(@Inject(CONFIG) private readonly config: Config) {}
 
-  get gatewayUrl(): string {
-    return `gateway:${GATEWAY_PORT}`;
-  }
+  readonly gatewayUrl = `gateway:${GATEWAY_PORT}`;
+  readonly helloTimeoutMs = 3 * 60 * 1000;
 
   /** Creates the internal network and (re)starts the gateway. */
   async prepare(): Promise<void> {
     await this.docker.ping();
+    if (!(await this.imageExists(this.config.OPIFICIA_SANDBOX_IMAGE))) {
+      const image = this.config.OPIFICIA_SANDBOX_IMAGE;
+      // `pnpm sandbox:build` builds the default image only.
+      const hint = image === DEFAULT_SANDBOX_IMAGE ? "build it with: pnpm sandbox:build" : "build it, or pull it from your registry";
+      this.logger.warn(`the sandbox image ${image} is missing; ${hint}`);
+    }
     const networks = await this.docker.listNetworks({ filters: { name: [SANDBOX_NETWORK] } });
     if (!networks.some((n) => n.Name === SANDBOX_NETWORK)) {
       await this.docker.createNetwork({ Name: SANDBOX_NETWORK, Driver: "bridge", Internal: true, Labels: { "opificia.role": "sandbox-network" } });
@@ -127,7 +127,6 @@ export class DockerService {
     return container.id;
   }
 
-  /** Resolves with the exit code when the container stops. */
   async waitForExit(containerId: string): Promise<number> {
     const result = (await this.docker.getContainer(containerId).wait()) as { StatusCode: number };
     return result.StatusCode;
@@ -146,7 +145,6 @@ export class DockerService {
     await this.docker.getContainer(containerId).stop({ t: 5 }).catch(() => undefined);
   }
 
-  /** Sandboxes left over from an earlier server process. */
   async listSandboxes(): Promise<Array<{ id: string; sessionId: string }>> {
     const containers = await this.docker.listContainers({ all: true, filters: { label: ["opificia.role=sandbox"] } });
     return containers.map((c) => ({ id: c.Id, sessionId: c.Labels["opificia.session"] ?? "" }));

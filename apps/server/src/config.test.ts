@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { EgressAllow } from "./config.js";
+import { EgressAllow, SandboxPodSettings } from "./config.js";
 
 const messages = (value: string) => {
   const result = EgressAllow.safeParse(value);
@@ -37,5 +37,17 @@ describe("EgressAllow", () => {
     expect(found).toHaveLength(1);
     expect(found[0]).toContain("https://bad.example");
     expect(found[0]).not.toContain('"example.org" is not');
+  });
+});
+
+describe("SandboxPodSettings", () => {
+  it("accepts tolerations with Kubernetes' fields", () => {
+    const toleration = { key: "opificia.ai/sandbox", operator: "Exists", effect: "NoSchedule" };
+    expect(SandboxPodSettings.parse(JSON.stringify({ tolerations: [toleration] })).tolerations).toEqual([toleration]);
+  });
+
+  it("rejects a toleration with a misspelt field or value", () => {
+    expect(SandboxPodSettings.safeParse(JSON.stringify({ tolerations: [{ key: "a", operatr: "Exists" }] })).success).toBe(false);
+    expect(SandboxPodSettings.safeParse(JSON.stringify({ tolerations: [{ key: "a", effect: "NoSchedul" }] })).success).toBe(false);
   });
 });

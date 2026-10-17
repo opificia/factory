@@ -4,6 +4,7 @@
 import { Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
 import { PrismaService } from "../prisma.service.js";
 import { EventStore } from "../runs/event-store.service.js";
+import { Deferred } from "../common/deferred.js";
 import { EffectsService, type StoredEffect } from "./effects.service.js";
 
 const CONCURRENCY = 3;
@@ -17,6 +18,8 @@ type ClaimedRow = { id: bigint; org_id: string; run_id: string; type: string; pa
  * Performs queued effects. Several workers can share the outbox: each claims
  * one effect at a time with `FOR UPDATE SKIP LOCKED` and a lease. Failed
  * effects are retried with backoff; after the last attempt the run fails.
+ * Deferred effects, such as a stage waiting for room for its sandbox, wait
+ * without using up an attempt.
  * The worker also fails runs that pass their deadline.
  */
 @Injectable()
@@ -95,6 +98,14 @@ export class OutboxWorker implements OnApplicationShutdown {
       await this.prisma.outboxEffect.update({ where: { id: row.id }, data: { status: "done", doneAt: new Date(), leaseUntil: null } });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof Deferred) {
+        this.logger.log(`run ${row.run_id}: ${row.type} waits: ${message}`);
+        await this.prisma.outboxEffect.update({
+          where: { id: row.id },
+          data: { status: "pending", attempts: row.attempts - 1, lastError: message, leaseUntil: null, availableAt: new Date(Date.now() + error.delayMs) },
+        });
+        return;
+      }
       const last = row.attempts >= MAX_ATTEMPTS;
       this.logger.warn(`run ${row.run_id}: ${row.type} failed (attempt ${row.attempts}): ${message}`);
       await this.prisma.outboxEffect.update({
