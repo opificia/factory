@@ -6,7 +6,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { serveFiles } from "./files.js";
 
 let dir: string;
@@ -89,6 +89,7 @@ describe("serveFiles", () => {
     });
     const response = await fetch(`${base}stream.bundle`, { method: "PUT", body, duplex: "half" } as RequestInit);
     expect(response.status).toBe(413);
-    expect((await readdir(dirs().outDir)).filter((f) => f.startsWith("stream"))).toEqual([]);
+    // The answer comes before the rest of the upload is dropped.
+    await vi.waitFor(async () => expect((await readdir(dirs().outDir)).filter((f) => f.startsWith("stream"))).toEqual([]));
   });
 });

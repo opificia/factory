@@ -17,8 +17,6 @@ const UPLOAD_IDLE_MS = 60_000;
 /** Output folders with an upload in progress. */
 const uploading = new Set<string>();
 
-class TooLarge extends Error {}
-
 /**
  * Files a sandbox exchanges with the control plane, in place of a shared
  * folder (ADR-0010). A sandbox downloads its input from `inDir` with
@@ -36,7 +34,9 @@ export async function serveFiles(
   dirs: { inDir: string; outDir: string },
   maxBytes = MAX_UPLOAD_BYTES,
 ): Promise<void> {
-  const text = (status: number, body: string) => res.writeHead(status, { "content-type": "text/plain" }).end(`${body}\n`);
+  // Close the connection after a refusal: the request body may still be coming.
+  const text = (status: number, body: string) =>
+    res.writeHead(status, { "content-type": "text/plain", ...(status >= 400 ? { connection: "close" } : {}) }).end(`${body}\n`);
   if (!BUNDLE_NAME.test(name)) return void text(404, "unknown file");
 
   if (req.method === "GET") {
@@ -55,11 +55,19 @@ export async function serveFiles(
     try {
       const file = join(dirs.outDir, name);
       const part = `${file}.part`;
+      // Over the limit, answer at once and drop the rest. The answer closes
+      // the connection; ending the request first would lose the answer.
       let size = 0;
+      let refused = false;
       const limit = new Transform({
         transform(chunk: Buffer, _encoding, done) {
           size += chunk.length;
-          done(size > maxBytes ? new TooLarge() : null, chunk);
+          if (size <= maxBytes) return done(null, chunk);
+          if (!refused) {
+            refused = true;
+            text(413, `the file is larger than ${maxBytes} bytes`);
+          }
+          done();
         },
       });
       req.setTimeout(UPLOAD_IDLE_MS, () => req.destroy(new Error("the upload stalled")));
@@ -67,8 +75,12 @@ export async function serveFiles(
         await pipeline(req, limit, createWriteStream(part, { mode: 0o600 }));
       } catch (error) {
         await rm(part, { force: true });
-        if (error instanceof TooLarge) return void text(413, `the file is larger than ${maxBytes} bytes`);
+        if (refused) return;
         throw error;
+      }
+      if (refused) {
+        await rm(part, { force: true });
+        return;
       }
       await rename(part, file);
       for (const other of await readdir(dirs.outDir)) {
