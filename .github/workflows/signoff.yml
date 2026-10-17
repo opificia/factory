@@ -32,7 +32,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    # Long enough for the required checks of the pull request to finish.
+    # The steps share one 30-minute deadline for the checks (see signoff.sh).
     timeout-minutes: 45
     permissions:
       contents: read
@@ -54,23 +54,25 @@ jobs:
           MAINTAINERS_FILE: ${{ runner.temp }}/maintainers.tsv
         run: .github/scripts/signoff.sh find
       - name: Run the DCO check again
-        if: steps.review.outputs.login != ''
+        if: steps.review.outputs.logins != ''
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEADLINE: ${{ steps.review.outputs.deadline }}
         run: .github/scripts/signoff.sh recheck
       - name: Get a token for the Opificia bot
         id: token
-        if: steps.review.outputs.login != ''
+        if: steps.review.outputs.logins != ''
         env:
           APP_ID: ${{ vars.OPIFICIA_BOT_APP_ID }}
           PRIVATE_KEY: ${{ secrets.OPIFICIA_BOT_PRIVATE_KEY }}
         run: .github/scripts/signoff.sh token
       - name: Merge with the sign-off
-        if: steps.review.outputs.login != ''
+        if: steps.review.outputs.logins != ''
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          LOGIN: ${{ steps.review.outputs.login }}
+          LOGINS: ${{ steps.review.outputs.logins }}
+          DEADLINE: ${{ steps.review.outputs.deadline }}
           NUMBER: ${{ steps.review.outputs.number }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MAINTAINERS_FILE: ${{ runner.temp }}/maintainers.tsv

@@ -7,7 +7,7 @@
 # this script merges the pull request with the maintainer's Signed-off-by line
 # in the squash commit. It never rewrites the branch.
 #
-#   signoff.sh find      Finds the pull request and a maintainer whose latest
+#   signoff.sh find      Finds the pull request and the maintainers whose latest
 #                        review approves the current head with "/signoff".
 #   signoff.sh token     Gets a token for the Opificia bot, limited to this
 #                        repository and to writing contents.
@@ -28,7 +28,8 @@ die() { echo "::error::$*" >&2; exit 1; }
 note() { echo "::notice::$*"; }
 output() { echo "$1=$2" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
-# How long to wait for the DCO check and the other required checks.
+# How long the run may wait, in all, for the DCO check and the other required
+# checks. `find` sets the deadline; the later steps share it.
 WAIT_SECONDS="${WAIT_SECONDS:-1800}"
 POLL_SECONDS="${POLL_SECONDS:-20}"
 
@@ -59,7 +60,7 @@ token() {
 # --- find -------------------------------------------------------------------
 # Needs GH_TOKEN (read access), HEAD_SHA and MAINTAINERS_FILE.
 find_review() {
-  local pr number reviews login=""
+  local pr number reviews logins=""
   pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" --jq \
     "[.[] | select(.state == \"open\" and .head.sha == \"$HEAD_SHA\" and .head.repo.full_name == \"$GITHUB_REPOSITORY\")][0] // empty")"
   if [ -z "$pr" ]; then
@@ -72,9 +73,9 @@ find_review() {
   reviews="$("$here/signoff-reviews.sh" "$GITHUB_REPOSITORY" "$number")"
   while read -r candidate commit_id; do
     [ -n "$candidate" ] && [ "$commit_id" = "$HEAD_SHA" ] || continue
-    if cut -f1 "$MAINTAINERS_FILE" | grep -qxF "$candidate"; then login="$candidate"; fi
+    if cut -f1 "$MAINTAINERS_FILE" | grep -qxF "$candidate"; then logins+="${logins:+ }$candidate"; fi
   done <<< "$reviews"
-  if [ -z "$login" ]; then
+  if [ -z "$logins" ]; then
     note "No approving review with /signoff by a maintainer on $HEAD_SHA. Nothing to do."
     return 0
   fi
@@ -86,23 +87,27 @@ find_review() {
     return 0
   fi
   # The bot's token cannot write workflows, so it cannot merge changes to them.
-  if gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$number/files" --jq '.[].filename' | grep -q '^\.github/workflows/'; then
+  # The list is read in full first: a failed request must stop the run, not
+  # pass as "no workflow changes".
+  local files
+  files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$number/files" --jq '.[].filename')" || die "Could not read the files of #$number."
+  if grep -q '^\.github/workflows/' <<< "$files"; then
     die "Pull request #$number changes .github/workflows/, which the bot may not merge. Sign off in a terminal (git signoff && git push --force-with-lease) and merge it yourself."
   fi
   # Only values of a known shape go to GITHUB_OUTPUT: a newline in free text,
   # such as a title, could add outputs of its own.
-  [[ "$login" =~ ^[a-z0-9-]+$ ]] && [[ "$number" =~ ^[0-9]+$ ]] || die "Unexpected reviewer or pull request number."
-  output login "$login"
+  [[ "$logins" =~ ^[a-z0-9-]+( [a-z0-9-]+)*$ ]] && [[ "$number" =~ ^[0-9]+$ ]] || die "Unexpected reviewers or pull request number."
+  output logins "$logins"
   output number "$number"
+  output deadline "$(( $(date +%s) + WAIT_SECONDS ))"
 }
 
 # --- recheck ----------------------------------------------------------------
-# Needs GH_TOKEN with "actions: write", and HEAD_SHA. The DCO check ran before
+# Needs GH_TOKEN with "actions: write", HEAD_SHA and DEADLINE. The DCO check ran before
 # the approval existed; a new run sees it. The run uses the workflow and the
 # script from the default branch, as every DCO run does.
 recheck() {
-  local run deadline status conclusion
-  deadline=$(( $(date +%s) + WAIT_SECONDS ))
+  local run deadline="${DEADLINE:?}" status conclusion
   run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/dco.yml/runs?head_sha=$HEAD_SHA&event=pull_request_target&per_page=1" --jq '.workflow_runs[0].id // empty')"
   [ -n "$run" ] || die "No DCO run found for $HEAD_SHA."
   while :; do
@@ -128,13 +133,14 @@ recheck() {
 # --- merge ------------------------------------------------------------------
 # The squash commit's message: the subjects of the commits, then their
 # Assisted-by and Co-authored-by lines, the sign-offs their authors gave
-# themselves, and the sign-off of the maintainer who approved. A Signed-off-by
+# themselves, and the sign-offs of the maintainers who approved, given as
+# arguments ("Name <email>"). A Signed-off-by
 # line for anyone but the commit's author is dropped: anyone can type one, and
 # on main it would read as that person's certification. Reads one line per
 # commit on standard input: the author's email and the message, both
 # base64-encoded, separated by a space.
 squash_message() {
-  local name="$1" email="$2" encoded_email encoded message author subjects="" trailers="" line
+  local encoded_email encoded message author subjects="" trailers="" line signer
   while read -r encoded_email encoded; do
     [ -n "$encoded" ] || continue
     author="$(base64 -d <<< "$encoded_email" | tr '[:upper:]' '[:lower:]')"
@@ -147,29 +153,33 @@ squash_message() {
       esac
     done < <(git interpret-trailers --parse <<< "$message")
   done
-  trailers+="Signed-off-by: $name <$email>"
+  for signer in "$@"; do trailers+="Signed-off-by: $signer"$'\n'; done
   printf '%s\n%s\n' "$subjects" "$(grep -v '^$' <<< "$trailers" | awk '!seen[tolower($0)]++')"
 }
 
-# Needs GH_TOKEN (the bot's token), LOGIN, NUMBER, HEAD_SHA and
-# MAINTAINERS_FILE. GitHub merges only if the head is still the approved
+# Needs GH_TOKEN (the bot's token), LOGINS, NUMBER, HEAD_SHA, DEADLINE and
+# MAINTAINERS_FILE. Every maintainer who approved with /signoff signs off:
+# the DCO check accepted commits by any of them. GitHub merges only if the head is still the approved
 # commit ("sha") and the branch rules are met, such as the required checks.
 merge() {
-  : "${LOGIN:?}" "${NUMBER:?}" "${HEAD_SHA:?}" "${MAINTAINERS_FILE:?}"
-  local name email message deadline result title
-  name="$(awk -F '\t' -v h="$LOGIN" '$1 == h { print $2 }' "$MAINTAINERS_FILE")"
-  email="$(awk -F '\t' -v h="$LOGIN" '$1 == h { print $3 }' "$MAINTAINERS_FILE")"
-  [ -n "$name" ] && [ -n "$email" ] || die "$LOGIN is not a maintainer with an email address in MAINTAINERS.md."
+  : "${LOGINS:?}" "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
+  local login name email message deadline="$DEADLINE" result title signers=() names=()
+  for login in $LOGINS; do
+    name="$(awk -F '\t' -v h="$login" '$1 == h { print $2 }' "$MAINTAINERS_FILE")"
+    email="$(awk -F '\t' -v h="$login" '$1 == h { print $3 }' "$MAINTAINERS_FILE")"
+    [ -n "$name" ] && [ -n "$email" ] || die "$login is not a maintainer with an email address in MAINTAINERS.md."
+    signers+=("$name <$email>")
+    names+=("$name")
+  done
   title="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq .title)"
   message="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/commits" \
-    --jq '.[] | "\(.commit.author.email | @base64) \(.commit.message | @base64)"' | squash_message "$name" "$email")"
+    --jq '.[] | "\(.commit.author.email | @base64) \(.commit.message | @base64)"' | squash_message "${signers[@]}")"
 
-  deadline=$(( $(date +%s) + WAIT_SECONDS ))
   while :; do
     if result="$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/merge" \
       -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$title (#$NUMBER)" -f commit_message="$message" \
       --jq .sha 2>&1)"; then
-      note "Merged #$NUMBER as $result, signed off by $name."
+      note "Merged #$NUMBER as $result, signed off by ${names[*]}."
       return 0
     fi
     # 409: the head moved after the approval. Anything but 405 will not change by waiting.
@@ -186,6 +196,6 @@ case "${1:-}" in
   token) token ;;
   recheck) recheck ;;
   merge) merge ;;
-  squash-message) squash_message "${2:?name}" "${3:?email}" ;;
+  squash-message) shift; squash_message "$@" ;;
   *) die "usage: signoff.sh find|token|recheck|merge" ;;
 esac
