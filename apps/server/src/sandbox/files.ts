@@ -7,9 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-
-/** The only names a sandbox may download or upload. */
-const BUNDLE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*\.bundle$/;
+import { BUNDLE_NAME } from "@opificia/contracts";
 /** The largest result bundle a sandbox may upload. */
 export const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
 /** An upload that sends nothing for this long is closed. */

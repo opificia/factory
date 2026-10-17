@@ -49,16 +49,19 @@ export async function runHarness(harness: Harness): Promise<number> {
     const inDir = process.env.OPIFICIA_IN_DIR ?? join(workDir, ".opificia", "in");
     const outDir = process.env.OPIFICIA_OUT_DIR ?? join(workDir, ".opificia", "out");
     let result: RunnerCompleteParams;
+    // What the harness spent, kept if a later step fails.
+    let costUsd = 0;
     try {
       await mkdir(inDir, { recursive: true });
       await mkdir(outDir, { recursive: true });
       await downloadFile(files, token, "repo.bundle", join(inDir, "repo.bundle"));
       result = await harness.run(task, { emit: (event) => client.event(event), signal: abort.signal, inDir, outDir, workDir });
+      costUsd = result.costUsd;
       if (result.outcome === "implementation_ready") {
         await uploadFile(files, token, result.bundle, join(outDir, result.bundle));
       }
     } catch (error) {
-      result = { outcome: "failed", error: error instanceof Error ? error.message : String(error), costUsd: 0 };
+      result = { outcome: "failed", error: error instanceof Error ? error.message : String(error), costUsd };
     }
     await client.complete(result);
     return result.outcome === "failed" ? 1 : 0;

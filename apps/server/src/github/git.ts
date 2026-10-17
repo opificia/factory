@@ -81,7 +81,8 @@ export async function bundleForSandbox(cacheDir: string, branch: string, baseSha
 
 /**
  * Loads an agent's bundle into a fresh bare repository next to the base, and
- * summarises the change for the checker.
+ * summarises the change for the checker. The bundle holds only the commits
+ * after the base; the base comes from the cache.
  */
 export async function loadResult(input: {
   checkDir: string;
