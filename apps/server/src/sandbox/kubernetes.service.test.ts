@@ -89,8 +89,10 @@ describe("probePod", () => {
       targets: ["1.1.1.1:443"],
       settings: settings('{"nodeSelector":{"a":"b"},"runtimeClassName":"gvisor"}'),
     });
-    // Every label a sandbox carries, so every policy that selects sandboxes selects the probe.
-    expect(pod.metadata.labels).toMatchObject({ "opificia.role": "sandbox", "opificia.run": "network-probe", "opificia.session": "network-probe" });
+    // Exactly the labels of a sandbox, with fresh IDs, so no policy can tell the probe apart.
+    const real = sandboxPod(spec, { gatewayIp: "10.0.0.7", settings: settings(), deadlineSeconds: 60 });
+    expect(Object.keys(pod.metadata.labels).sort()).toEqual(Object.keys(real.metadata.labels).sort());
+    expect(pod.metadata.labels).toMatchObject({ "opificia.role": "sandbox", "opificia.run": expect.stringMatching(/^[0-9a-f-]{36}$/) });
     expect(pod.spec).toMatchObject({ nodeSelector: { a: "b" }, runtimeClassName: "gvisor", hostAliases: [{ ip: "10.0.0.7" }] });
     expect(pod.spec.containers[0]).toMatchObject({
       command: ["node", "-e", expect.stringContaining("net.connect")],

@@ -4,6 +4,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { appendFile, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import {
   JsonRpcNotification,
@@ -34,6 +35,11 @@ const ADMISSION_LOCK = 0x6f706966;
  * A completed or stopped session may still have a sandbox shutting down.
  */
 const BUSY = { endedAt: null };
+/** How often the worker tries to follow a sandbox to its exit, and the pause between tries, growing each time. */
+const WATCH_ATTEMPTS = 5;
+const WATCH_RETRY_MS = 10_000;
+/** The exit code recorded when a sandbox's own is unknown, as for a killed process. */
+const GONE_EXIT_CODE = 137;
 /** Progress events kept per stage; more are dropped. */
 const MAX_EVENTS_PER_SESSION = 3000;
 /** Lines written to a session's egress log; more are dropped. */
@@ -66,6 +72,8 @@ function sameHash(a: string, b: string): boolean {
 @Injectable()
 export class SessionsService {
   private readonly logger = new Logger(SessionsService.name);
+  /** The first pause before following a sandbox again; tests shorten it. */
+  protected watchRetryMs = WATCH_RETRY_MS;
   private readonly active = new Map<string, ActiveSession>();
   /** Hashes of the egress proxy tokens, by session. Kept apart from the runner token. */
   private readonly egressTokens = new Map<string, string>();
@@ -170,15 +178,31 @@ export class SessionsService {
         .catch((error: Error) => this.logger.error(`checking session ${sessionId}: ${error.message}`));
     }, this.sandboxes.helloTimeoutMs);
 
-    void this.sandboxes
-      .waitForExit(containerId)
-      .then(async (exitCode) => {
-        clearTimeout(helloTimer);
-        await this.sandboxes.saveLogs(containerId, join(base, "container.log")).catch(() => undefined);
-        await this.sandboxes.remove(containerId);
-        await this.onExit(sessionId, exitCode);
-      })
+    void this.watch(sessionId, containerId, base)
+      .finally(() => clearTimeout(helloTimer))
       .catch((error: Error) => this.logger.error(`watching ${containerId}: ${error.message}`));
+  }
+
+  /**
+   * Waits for a sandbox to exit, then ends its session. If the backend keeps
+   * failing to report the exit, the sandbox is removed and the session ends
+   * anyway, so it does not hold a place under the cap for ever.
+   */
+  private async watch(sessionId: string, containerId: string, base: string): Promise<void> {
+    let exitCode = GONE_EXIT_CODE;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        exitCode = await this.sandboxes.waitForExit(containerId);
+        break;
+      } catch (error) {
+        this.logger.warn(`watching ${shortId(containerId)} (attempt ${attempt} of ${WATCH_ATTEMPTS}): ${(error as Error).message}`);
+        if (attempt >= WATCH_ATTEMPTS) break;
+        await sleep(attempt * this.watchRetryMs);
+      }
+    }
+    await this.sandboxes.saveLogs(containerId, join(base, "container.log")).catch(() => undefined);
+    await this.sandboxes.remove(containerId);
+    await this.onExit(sessionId, exitCode);
   }
 
   /** Starts the sandbox; if that fails, there is none, so the session ends. */

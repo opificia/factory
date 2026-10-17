@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Logger } from "@nestjs/common";
 import type { RunnerTask } from "@opificia/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { Deferred } from "../common/deferred.js";
@@ -51,5 +52,29 @@ describe("SessionsService.stopRun", () => {
     await new SessionsService({} as Config, prisma, backend, {} as EventStore).stopRun("r", "cancelled");
     expect(update).toHaveBeenCalledWith({ where: { id: "s" }, data: { status: "stopped" } });
     expect(backend.stop).toHaveBeenCalledWith("c");
+  });
+});
+
+describe("SessionsService watching a sandbox", () => {
+  it("ends the session when the backend keeps failing to report the exit", async () => {
+    const update = vi.fn(() => Promise.resolve({}));
+    const prisma = {
+      sandboxSession: { findUnique: vi.fn(() => Promise.resolve({ id: "s", status: "completed", runId: "r", orgId: "o", stage: "plan" })), update },
+    } as unknown as PrismaService;
+    const backend = {
+      waitForExit: vi.fn(() => Promise.reject(new Error("socket hang up"))),
+      saveLogs: vi.fn(() => Promise.resolve()),
+      remove: vi.fn(() => Promise.resolve()),
+    } as unknown as SandboxBackend;
+    vi.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const service = new SessionsService({} as Config, prisma, backend, {} as EventStore);
+    const internals = service as unknown as { watchRetryMs: number; watch: (s: string, c: string, b: string) => Promise<void> };
+    internals.watchRetryMs = 0;
+
+    await internals.watch("s", "c", "/tmp/x");
+
+    expect(backend.waitForExit).toHaveBeenCalledTimes(5);
+    expect(backend.remove).toHaveBeenCalledWith("c");
+    expect(update).toHaveBeenCalledWith({ where: { id: "s" }, data: expect.objectContaining({ exitCode: 137, endedAt: expect.any(Date) }) });
   });
 });

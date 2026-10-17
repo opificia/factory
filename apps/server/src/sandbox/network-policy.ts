@@ -136,7 +136,8 @@ export function ciliumEgressProblems(policies: CiliumNetworkPolicy[], sandbox: {
   const problems: string[] = [];
   for (const policy of policies) {
     for (const rule of [policy.spec, ...(policy.specs ?? [])]) {
-      if (!rule?.egress) continue;
+      // An empty list allows nothing.
+      if (!rule?.egress?.length) continue;
       const selector = plainSelector(rule.endpointSelector);
       const keys = [...Object.keys(selector?.matchLabels ?? {}), ...(selector?.matchExpressions ?? []).map((e) => e.key)];
       const anyValue = [...sandbox.anyValue, ...keys.filter((k) => CILIUM_POD_LABELS.test(k))];

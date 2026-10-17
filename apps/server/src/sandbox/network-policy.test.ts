@@ -143,5 +143,6 @@ describe("ciliumEgressProblems", () => {
     expect(ciliumEgressProblems([cnp("worker", { matchLabels: { "opificia.role": "worker" } })], sandbox)).toEqual([]);
     expect(ciliumEgressProblems([cnp("web", { matchLabels: { app: "web" } })], sandbox)).toEqual([]);
     expect(ciliumEgressProblems([cnp("deny", {}, { egressDeny: [{}] })], sandbox)).toEqual([]);
+    expect(ciliumEgressProblems([cnp("empty", {}, { egress: [] })], sandbox)).toEqual([]);
   });
 });

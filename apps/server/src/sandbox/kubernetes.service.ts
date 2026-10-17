@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: The Opificia Authors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Inject, Injectable, Logger } from "@nestjs/common";
@@ -204,12 +204,14 @@ export function probePod(options: {
   /** Runs the pod on this node, so both probes test the same one. */
   nodeName?: string;
 }) {
-  // The control pod's role does not match the policy's selector.
-  const labels: Record<string, string> = options.control ? { "opificia.role": "network-control" } : {};
-  // The probe carries every label a sandbox carries, so every policy that
-  // selects sandboxes selects it too.
-  const perPod: Record<string, string> = options.control ? {} : Object.fromEntries(PER_POD_LABELS.map((key) => [key, "network-probe"]));
-  const pod = basePod({ ...options, labels: { ...labels, ...perPod, "opificia.probe": "network" }, deadlineSeconds: PROBE_TIMEOUT_MS / 1000 });
+  // The probe carries exactly the labels of a sandbox, with fresh IDs like a
+  // run's, so no policy can tell it apart: one that selects sandboxes but not
+  // the probe could open the network while the probe passes. The control's
+  // role does not match the sandbox policy's selector.
+  const labels: Record<string, string> = options.control
+    ? { "opificia.role": "network-control", "opificia.probe": "network" }
+    : Object.fromEntries(PER_POD_LABELS.map((key) => [key, randomUUID()]));
+  const pod = basePod({ ...options, labels, deadlineSeconds: PROBE_TIMEOUT_MS / 1000 });
   Object.assign(pod.spec.containers[0]!, {
     command: ["node", "-e", PROBE],
     env: [
