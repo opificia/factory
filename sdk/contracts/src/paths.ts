@@ -4,7 +4,7 @@
 /**
  * Paths an agent must not change: CI workflows and scripts, the git hooks
  * contributors install, code owners, the list of maintainers who may sign off
- * (ADR-0006) and the files that instruct agents. The harness blocks edits to
+ * (ADR-0011) and the files that instruct agents. The harness blocks edits to
  * them, and the control plane checks the result again before it pushes.
  */
 export const DEFAULT_PROTECTED_PATHS: readonly string[] = [

@@ -43,8 +43,9 @@ ADRs are not edited after acceptance, apart from typos and links. To change a de
 | [0003](0003-host-the-website-on-scaleway.md) | Host the website on Scaleway | accepted |
 | [0004](0004-target-architecture.md) | Target architecture, with Claude Code as the first harness | accepted |
 | [0005](0005-prototype-stack.md) | Prototype stack | accepted |
-| [0006](0006-sign-off-by-approval.md) | Sign off by approval | accepted |
+| [0006](0006-sign-off-by-approval.md) | Sign off by approval | superseded by [ADR-0011](0011-sign-off-at-the-merge.md) |
 | [0007](0007-sandbox-network-policy.md) | Sandbox network policy, with a decision model for unknown hosts | accepted |
 | [0008](0008-render-markdown-with-streamdown.md) | Render Markdown in the web app with Streamdown | accepted |
 | [0009](0009-let-agents-see-the-web-app.md) | Let agents see the web app, with a fixture mode and a browser in the sandbox | accepted |
 | [0010](0010-run-on-kubernetes.md) | Run Opificia on any Kubernetes cluster, with sandboxes that scale with the work | proposed |
+| [0011](0011-sign-off-at-the-merge.md) | Sign off at the merge | accepted |

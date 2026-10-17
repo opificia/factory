@@ -65,7 +65,7 @@ const HIDDEN_UNICODE = /[‪-‮⁦-⁩​-‍⁠﻿\u{E0000}-\u{E007F}]/u;
 /**
  * A sign-off certifies the Developer Certificate of Origin, which only a person
  * can do. An agent that writes one could pass a DCO check without any human
- * approval (ADR-0006), so its commits may not carry one at all.
+ * approval (ADR-0011), so its commits may not carry one at all.
  */
 const SIGN_OFF = /^[ \t]*signed-off-by[ \t]*:/im;
 

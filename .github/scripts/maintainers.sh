@@ -6,7 +6,7 @@
 # "handle<TAB>name<TAB>email", with the handle in lower case and without "@".
 # Reads the file given as the first argument, or standard input. Rows without
 # an email address are skipped. Used by the DCO check and the Sign-off
-# workflow (ADR-0006).
+# workflow (ADR-0011).
 
 set -euo pipefail
 

@@ -1,6 +1,6 @@
 # ADR-0006: Sign off by approval
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0011](0011-sign-off-at-the-merge.md)
 - **Date:** 2026-10-15
 - **Deciders:** the maintainers, with the project steward as architecture owner
 - **Related:** [`CONTRIBUTING.md`](../../CONTRIBUTING.md#developer-certificate-of-origin-dco), [`AGENTS.md`](../../AGENTS.md) rule 1, [ADR-0004](0004-target-architecture.md), [`SOVEREIGNTY.md`](../../SOVEREIGNTY.md) commitment 6

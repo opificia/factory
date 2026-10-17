@@ -7,7 +7,7 @@
 # missing sign-off fails here, before the pull request. See CONTRIBUTING.md.
 #
 # If a maintainer signs off your pull request by approving it with /signoff
-# (ADR-0006), you may push unsigned commits. Set this once, and the hook only
+# (ADR-0011), you may push unsigned commits. Set this once, and the hook only
 # lists them:
 #
 #   git config opificia.signoff approval

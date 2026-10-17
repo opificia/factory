@@ -92,30 +92,30 @@ cp .githooks/pre-push .git/hooks/pre-push
 git config alias.signoff '!f() { git fetch --quiet origin && git rebase --quiet --signoff --force-rebase "$(git merge-base HEAD "${1:-origin/main}")"; }; f'
 ```
 
-- The `pre-push` hook runs the same check as CI. If a commit lacks your sign-off, git refuses the push and lists the commit, so the problem never reaches a pull request. If a maintainer signs off your pull request with `/signoff` instead (see [Sign off by approval](#sign-off-by-approval)), run `git config opificia.signoff approval`: the hook then lists unsigned commits but lets the push through.
+- The `pre-push` hook runs the same check as CI. If a commit lacks your sign-off, git refuses the push and lists the commit, so the problem never reaches a pull request. If a maintainer signs off your pull request with `/signoff` instead (see [Sign off at the merge](#sign-off-at-the-merge)), run `git config opificia.signoff approval`: the hook then lists unsigned commits but lets the push through.
 - `git signoff` fetches `origin`, then signs off every commit on your branch since it left `main`. Use `git signoff <branch>` if you started from another branch. The fetch matters: with an old `origin/main`, the rebase would also copy commits that are already on `main`.
 
 We copy the hook into `.git/hooks` instead of pointing git at `.githooks`. That way, a branch you check out cannot change which hook runs on your machine. Copy the hook again when it changes.
 
-If an AI agent writes commits for you, it never signs them off (see [AI-assisted contributions](#ai-assisted-contributions)). Review the commits, then run `git signoff` and push. If you are a maintainer, you can instead let the agent push and open the pull request, and sign off by approval.
+If an AI agent writes commits for you, it never signs them off (see [AI-assisted contributions](#ai-assisted-contributions)). Review the commits, then run `git signoff` and push. If you are a maintainer, you can instead let the agent push and open the pull request, and sign off at the merge.
 
-### Sign off by approval
+### Sign off at the merge
 
-Maintainers can sign off without a terminal ([ADR-0006](docs/adr/0006-sign-off-by-approval.md)). This is how changes written by the Opificia bot or by an agent get their sign-off:
+Maintainers sign off a pull request by approving it ([ADR-0011](docs/adr/0011-sign-off-at-the-merge.md)). This is how changes written by the Opificia bot or by an agent get their sign-off:
 
 1. Review the pull request on GitHub.
 2. Approve it, with a line that reads `/signoff` in the review. A plain comment does not count: it must be an approving review.
-3. The `Sign-off` workflow adds your `Signed-off-by` line to the commits, using the name and email address in [`MAINTAINERS.md`](MAINTAINERS.md), and pushes them. The DCO check runs again.
+3. The DCO check runs again and passes. The `Sign-off` workflow then squash-merges the pull request, with your `Signed-off-by` line in the squash commit, using the name and email address in [`MAINTAINERS.md`](MAINTAINERS.md). You do not merge it yourself, and the branch is not rewritten.
 
-By writing `/signoff`, you certify the Developer Certificate of Origin for those commits, exactly as with `git commit -s`. The workflow refuses, and changes nothing, when:
+By writing `/signoff`, you certify the Developer Certificate of Origin for the commits by the bot and by you, exactly as with `git commit -s`. Nothing is merged when:
 
-- your approval is not on the current head of the branch, because someone pushed after your review;
+- your approval is not on the current head of the branch, because someone pushed after your review. Approve the new head;
 - a commit is by someone other than you or the bot that opened the pull request, because that person must sign off themselves. An author email alone proves nothing, so a commit counts as the bot's only when GitHub names that bot as the author of the pull request;
-- the branch contains merge commits;
-- the pull request does not go into the default branch, or branch rules apply to its head branch, because the bot rewrites that branch; or
-- the branch changes `.github/workflows/`, which the bot may not push. Sign off in a terminal instead.
+- the pull request does not go into the default branch. A stacked pull request moves onto the default branch when its base is merged; approve it again then;
+- the branch changes `.github/workflows/`, which the bot may not merge. Sign off in a terminal and merge it yourself; or
+- the required checks do not pass within 30 minutes. Approve again once they do, or merge it yourself.
 
-GitHub does not let you approve your own pull request, so this works for pull requests that a bot or another person opened. An agent that works for you should open its pull requests as a GitHub App, such as the factory's App. It works only for branches in this repository, not for forks. The workflow needs a GitHub App that is installed only on this repository, with "Contents: read and write" and nothing else. Its ID goes in the repository variable `OPIFICIA_BOT_APP_ID`, and its private key in the secret `OPIFICIA_BOT_PRIVATE_KEY`.
+GitHub does not let you approve your own pull request, so this works for pull requests that a bot or another person opened. An agent that works for you should open its pull requests as a GitHub App, such as the factory's App. It works only for branches in this repository, not for forks. The workflow needs a GitHub App that is installed only on this repository, with "Contents: read and write" and nothing else, and that branch rules allow to merge. Its ID goes in the repository variable `OPIFICIA_BOT_APP_ID`, and its private key in the secret `OPIFICIA_BOT_PRIVATE_KEY`.
 
 ### How to fix a missing sign-off
 
@@ -180,7 +180,7 @@ Opificia builds AI agents, so we expect contributors to use AI tools too. These 
   "Meaningful" means the tool wrote or substantially rewrote part of the change. Autocompletion of a single line does not need a trailer.
 - **No incompatible code.** Do not paste output that reproduces code under a licence incompatible with the folder you change. If a tool produces a large block that looks copied from elsewhere, do not submit it.
 - **Keep confidential material out of AI tools.** Do not paste or send embargoed security reports, secrets and credentials, or anything shared with the project in confidence into third-party AI tools. If in doubt, ask a maintainer first. [How we build Opificia](SOVEREIGNTY.md#how-we-build-opificia) explains why.
-- **Automated agents** may open pull requests only from a clearly labelled bot account (for example, a name ending in `-bot` and a profile that says who runs it). A human maintainer must approve every such pull request before it is merged. A bot account never signs off by itself. It only records the sign-off a maintainer gives with `/signoff` (see [Sign off by approval](#sign-off-by-approval)).
+- **Automated agents** may open pull requests only from a clearly labelled bot account (for example, a name ending in `-bot` and a profile that says who runs it). A human maintainer must approve every such pull request before it is merged. A bot account never signs off by itself. It only records the sign-off a maintainer gives with `/signoff` (see [Sign off at the merge](#sign-off-at-the-merge)).
 
 Pull requests with meaningful AI assistance get the `ai-assisted` label. This is for transparency, not a judgement.
 
