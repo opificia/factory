@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { sandboxEgressProblems, selects, type NetworkPolicy } from "./network-policy.js";
+import { ciliumEgressProblems, sandboxEgressProblems, selects, type CiliumNetworkPolicy, type NetworkPolicy } from "./network-policy.js";
 
 const labels = { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" };
 const sandbox = { labels, anyValue: ["opificia.run", "opificia.session"] };
@@ -36,6 +36,10 @@ describe("selects", () => {
     expect(selects(expr("Exists", "missing"), labels)).toBe(false);
     expect(selects(expr("DoesNotExist", "missing"), labels)).toBe(true);
     expect(selects(expr("DoesNotExist"), labels)).toBe(false);
+  });
+
+  it("counts an operator it does not know as met, so the policy is checked", () => {
+    expect(selects({ matchExpressions: [{ key: "opificia.role", operator: "Gt", values: ["1"] }] }, labels)).toBe(true);
   });
 
   it("does not take inherited properties for labels", () => {
@@ -108,5 +112,36 @@ describe("sandboxEgressProblems", () => {
 
   it("needs a gateway service that selects pods by label", () => {
     expect(sandboxEgressProblems([chart], sandbox, { selector: {}, port: 3001 })).toHaveLength(1);
+  });
+});
+
+describe("ciliumEgressProblems", () => {
+  type Selector = NonNullable<CiliumNetworkPolicy["spec"]>["endpointSelector"];
+  const cnp = (name: string, endpointSelector: Selector, rule: object = { egress: [{}] }): CiliumNetworkPolicy => ({
+    metadata: { name },
+    spec: { endpointSelector, ...rule },
+  });
+  const problem = (name: string) => [`the CiliumNetworkPolicy ${name} applies to sandbox pods and allows egress, which the worker cannot check`];
+
+  it("finds a policy that allows egress for every pod, or for sandboxes", () => {
+    expect(ciliumEgressProblems([cnp("all", {})], sandbox)).toEqual(problem("all"));
+    expect(ciliumEgressProblems([cnp("prefixed", { matchLabels: { "k8s:opificia.role": "sandbox" } })], sandbox)).toEqual(problem("prefixed"));
+    expect(ciliumEgressProblems([cnp("by-run", { matchExpressions: [{ key: "opificia.run", operator: "Exists" }] })], sandbox)).toEqual(problem("by-run"));
+  });
+
+  it("counts Cilium's own pod labels, such as the namespace, as present", () => {
+    const byNamespace = cnp("namespace", { matchLabels: { "k8s:io.kubernetes.pod.namespace": "opificia" } });
+    expect(ciliumEgressProblems([byNamespace], sandbox)).toEqual(problem("namespace"));
+  });
+
+  it("finds a rule in specs as well as in spec", () => {
+    const policy: CiliumNetworkPolicy = { metadata: { name: "specs" }, specs: [{ endpointSelector: { matchLabels: { app: "web" } }, egress: [{}] }, { endpointSelector: {}, egress: [{}] }] };
+    expect(ciliumEgressProblems([policy], sandbox)).toEqual(problem("specs"));
+  });
+
+  it("ignores policies for other pods, and policies that only deny", () => {
+    expect(ciliumEgressProblems([cnp("worker", { matchLabels: { "opificia.role": "worker" } })], sandbox)).toEqual([]);
+    expect(ciliumEgressProblems([cnp("web", { matchLabels: { app: "web" } })], sandbox)).toEqual([]);
+    expect(ciliumEgressProblems([cnp("deny", {}, { egressDeny: [{}] })], sandbox)).toEqual([]);
   });
 });

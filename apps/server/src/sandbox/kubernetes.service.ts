@@ -8,7 +8,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { CONFIG, type Config, type SandboxPodSettings } from "../config.js";
 import type { SandboxBackend, SandboxSpec } from "./backend.js";
 import { KubeApi, KubeApiError } from "./kube-api.js";
-import { sandboxEgressProblems, type NetworkPolicy } from "./network-policy.js";
+import { ciliumEgressProblems, sandboxEgressProblems, type CiliumNetworkPolicy, type NetworkPolicy } from "./network-policy.js";
 
 const POLL_MS = 5000;
 /** How long the network probe may take, including a new sandbox node and pulling its image. */
@@ -307,22 +307,31 @@ export class KubernetesService implements SandboxBackend {
   }
 
   /**
-   * Reads the network policies of the namespace. The probe shows that the
-   * cluster enforces them; this shows that they allow nothing but the worker.
+   * Reads the network policies of the namespace: the Kubernetes ones, and
+   * Cilium's if the cluster has them. The probe shows that the cluster
+   * enforces them; this shows that they allow nothing but the worker.
+   * Cluster-wide policies are beyond the worker's Role; see
+   * `ciliumEgressProblems`.
    */
   private async checkPolicies(): Promise<void> {
-    const path = `/apis/networking.k8s.io/v1/namespaces/${encodeURIComponent(this.namespace)}/networkpolicies`;
-    const list = await this.api.json<{ items: NetworkPolicy[] }>("GET", path).catch((error: Error) => {
-      if (error instanceof KubeApiError && error.status === 403) {
-        throw new Error("the worker may not read network policies; its Role needs get and list on networkpolicies");
+    const ns = encodeURIComponent(this.namespace);
+    const sandbox = { labels: { ...LABELS, ...Object.fromEntries(PER_POD_LABELS.map((k) => [k, ""])) }, anyValue: PER_POD_LABELS };
+    const read = async <T>(path: string, kind: string): Promise<T[] | undefined> => {
+      try {
+        return (await this.api.json<{ items: T[] }>("GET", path)).items;
+      } catch (error) {
+        // No such API: the cluster does not have these policies.
+        if (error instanceof KubeApiError && error.status === 404) return undefined;
+        if (error instanceof KubeApiError && error.status === 403) throw new Error(`the worker may not read ${kind}; its Role needs get and list on them`);
+        throw error;
       }
-      throw error;
-    });
-    const problems = sandboxEgressProblems(
-      list.items,
-      { labels: LABELS, anyValue: PER_POD_LABELS },
-      { selector: this.gateway!.selector, port: this.config.OPIFICIA_SANDBOX_PORT },
-    );
+    };
+    const policies = (await read<NetworkPolicy>(`/apis/networking.k8s.io/v1/namespaces/${ns}/networkpolicies`, "networkpolicies")) ?? [];
+    const cilium = (await read<CiliumNetworkPolicy>(`/apis/cilium.io/v2/namespaces/${ns}/ciliumnetworkpolicies`, "ciliumnetworkpolicies")) ?? [];
+    const problems = [
+      ...sandboxEgressProblems(policies, sandbox, { selector: this.gateway!.selector, port: this.config.OPIFICIA_SANDBOX_PORT }),
+      ...ciliumEgressProblems(cilium, sandbox),
+    ];
     if (problems.length > 0) {
       throw new Error(`the network policies would let sandboxes bypass the egress proxy: ${problems.join("; ")}`);
     }

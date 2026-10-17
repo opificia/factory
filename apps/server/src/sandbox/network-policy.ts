@@ -39,7 +39,9 @@ export function selects(selector: LabelSelector | undefined, labels: Record<stri
       operator === "NotIn" ? !has || !values.includes(labels[key]!) :
       operator === "Exists" ? has :
       operator === "DoesNotExist" ? !has :
-      false;
+      // An operator Kubernetes does not know counts as met: better to check
+      // a policy that may not apply than to skip one that does.
+      true;
     if (!ok) return false;
   }
   return true;
@@ -94,4 +96,56 @@ export function sandboxEgressProblems(
     }
   }
   return [...new Set(problems)];
+}
+
+/** The parts of a CiliumNetworkPolicy (cilium.io/v2) that say whom it applies to and whether it allows egress. */
+export type CiliumNetworkPolicy = {
+  metadata: { name: string };
+  spec?: CiliumRule;
+  specs?: CiliumRule[];
+};
+type CiliumRule = { endpointSelector?: LabelSelector; egress?: unknown[] };
+
+/**
+ * Cilium labels that every pod carries besides its own, such as its namespace
+ * and service account. A selector may require them; their values are not
+ * checked.
+ */
+const CILIUM_POD_LABELS = /^(io\.kubernetes\.|io\.cilium\.)/;
+
+/** A Cilium selector in Kubernetes terms: without the "k8s:" or "any:" source prefix. */
+function plainSelector(selector: LabelSelector | undefined): LabelSelector | undefined {
+  const plain = (key: string) => key.replace(/^(k8s|any):/, "");
+  return {
+    matchLabels: Object.fromEntries(Object.entries(selector?.matchLabels ?? {}).map(([k, v]) => [plain(k), v])),
+    matchExpressions: (selector?.matchExpressions ?? []).map((e) => ({ ...e, key: plain(e.key) })),
+  };
+}
+
+/**
+ * Cilium enforces its own policies alongside NetworkPolicies, and they add up
+ * in the same way: one that applies to sandboxes and allows egress can open
+ * what the NetworkPolicy closes. The worker does not check Cilium's rules, so
+ * any such policy is a problem. Policies that only deny (`egressDeny`) are not.
+ *
+ * Cluster-wide policies, such as CiliumClusterwideNetworkPolicy and
+ * AdminNetworkPolicy, need permissions beyond the worker's namespace, so the
+ * worker cannot read them. For those, the network probe is the only check.
+ */
+export function ciliumEgressProblems(policies: CiliumNetworkPolicy[], sandbox: { labels: Record<string, string>; anyValue: readonly string[] }): string[] {
+  const problems: string[] = [];
+  for (const policy of policies) {
+    for (const rule of [policy.spec, ...(policy.specs ?? [])]) {
+      if (!rule?.egress) continue;
+      const selector = plainSelector(rule.endpointSelector);
+      const keys = [...Object.keys(selector?.matchLabels ?? {}), ...(selector?.matchExpressions ?? []).map((e) => e.key)];
+      const anyValue = [...sandbox.anyValue, ...keys.filter((k) => CILIUM_POD_LABELS.test(k))];
+      const labels = { ...sandbox.labels, ...Object.fromEntries(anyValue.map((k) => [k, ""])) };
+      if (selects(selector, labels, anyValue)) {
+        problems.push(`the CiliumNetworkPolicy ${policy.metadata.name} applies to sandbox pods and allows egress, which the worker cannot check`);
+        break;
+      }
+    }
+  }
+  return problems;
 }

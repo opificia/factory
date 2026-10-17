@@ -148,6 +148,8 @@ describe("KubernetesService", () => {
     spec: { podSelector: { matchLabels: { "opificia.role": "sandbox" } }, policyTypes: ["Egress"], egress: [{ to: [{ podSelector: { matchLabels: worker } }], ports: [{ port: 3001 }] }] },
   };
   let policies: unknown[] = [tight];
+  // Undefined: the cluster has no Cilium, so the API answers 404.
+  let cilium: unknown[] | undefined;
   let probes: { sandbox: ProbeResult; control: ProbeResult } = { sandbox: { gateway: true, reached: [] }, control: { gateway: false, reached: ["10.96.0.1:443"] } };
 
   beforeAll(async () => {
@@ -160,6 +162,7 @@ describe("KubernetesService", () => {
         const json = (status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
         if (path === "/api/v1/namespaces/opificia/services/opificia-sandbox") return json(200, { spec: { clusterIP: "10.0.0.7", ports: [{ port: 3001 }], selector: worker } });
         if (path === "/apis/networking.k8s.io/v1/namespaces/opificia/networkpolicies") return json(200, { items: policies });
+        if (path === "/apis/cilium.io/v2/namespaces/opificia/ciliumnetworkpolicies" && cilium) return json(200, { items: cilium });
         if (req.method === "POST" && path.endsWith("/pods")) {
           const name = (JSON.parse(raw) as { metadata: { name: string } }).metadata.name;
           return json(201, { metadata: { name, uid: `uid-${name}` } });
@@ -189,6 +192,7 @@ describe("KubernetesService", () => {
   afterEach(() => {
     requests.length = 0;
     policies = [tight];
+    cilium = undefined;
     vi.restoreAllMocks();
   });
 
@@ -233,6 +237,12 @@ describe("KubernetesService", () => {
   it("refuses to run sandboxes when a network policy lets them out", async () => {
     policies = [tight, { metadata: { name: "allow-all" }, spec: { podSelector: {}, policyTypes: ["Egress"], egress: [{}] } }];
     await expect(service().prepare()).rejects.toThrow(/allow-all lets sandboxes reach any address/);
+    expect(requests.some((r) => r.method === "POST")).toBe(false);
+  });
+
+  it("refuses to run sandboxes when a Cilium policy lets them out", async () => {
+    cilium = [{ metadata: { name: "allow-world" }, spec: { endpointSelector: {}, egress: [{ toEntities: ["world"] }] } }];
+    await expect(service().prepare()).rejects.toThrow(/CiliumNetworkPolicy allow-world applies to sandbox pods/);
     expect(requests.some((r) => r.method === "POST")).toBe(false);
   });
 
