@@ -22,6 +22,16 @@ foreign=0
 # and the tree git makes of them on its own. The same rule as the DCO check;
 # a merge that resolved conflicts is checked like any other commit. Merges may
 # never carry a foreign sign-off.
+#
+# The test needs `git merge-tree --write-tree`, from Git 2.38. With an older
+# Git the hook cannot tell a clean merge from one with changes of its own, so
+# it says so and leaves that merge to the DCO check in CI, which runs a
+# recent Git. Everything else is checked as usual.
+merge_tree=0
+git merge-tree --write-tree --no-messages HEAD HEAD > /dev/null 2>&1 && merge_tree=1
+is_merge() {
+  [ "$(git show -s --format='%P' "$1" | wc -w)" -ge 2 ]
+}
 clean_merge() {
   local parents clean
   read -r -a parents <<< "$(git show -s --format='%P' "$1")"
@@ -61,6 +71,8 @@ while read -r _ local_sha _ remote_sha; do
     if [ "$other" -eq 1 ]; then
       echo "sign-off not by the author: $(git show -s --format='%h %s' "$sha")" >&2
       foreign=1
+    elif [ "$own" -eq 0 ] && is_merge "$sha" && [ "$merge_tree" -eq 0 ]; then
+      echo "not checked: $(git show -s --format='%h %s' "$sha") is a merge, and checking merges needs Git 2.38 or later. The DCO check in CI will check it." >&2
     elif [ "$own" -eq 0 ] && ! clean_merge "$sha"; then
       echo "missing sign-off: $(git show -s --format='%h %s' "$sha")" >&2
       missing=1
