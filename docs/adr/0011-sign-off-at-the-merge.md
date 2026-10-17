@@ -48,7 +48,6 @@ Option 3 of ADR-0006 was close to this, and ADR-0006 rejected it because the mai
 - The `Signed-off-by` line lives in the squash commit on `main`, not in the commits of the branch. The DCO check on the pull request passes because of the approval, and the squash commit records it.
 - A stacked pull request, whose base is another branch, is not merged by its approval. When its base is merged, GitHub moves it onto `main`; the maintainer approves it again then.
 - The bot merges pull requests. If branch rules restrict who may merge, the bot must be allowed to.
-- A maintainer can withdraw their sign-off in the moment between the workflow reading the reviews and GitHub merging, because GitHub cannot make a merge depend on the reviews. The default branch must therefore require an approving review: GitHub then refuses the merge itself once the approval is withdrawn, by a request for changes or a dismissal.
 - Pull requests that change `.github/workflows/` still need a sign-off in a terminal, because the bot's token cannot write workflows. The maintainer merges them by hand.
 - The workflow waits up to 30 minutes for the required checks. A pull request whose checks take longer must be approved again, or merged by hand.
 - Contributors who sign off their own commits are not affected.

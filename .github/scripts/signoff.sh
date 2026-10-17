@@ -171,10 +171,15 @@ squash_message() {
 # MAINTAINERS_FILE. Every maintainer whose sign-off stands at the moment of
 # the merge signs off, because the DCO check accepts commits by any of them.
 # The signers are read again before each attempt: one who withdrew since the
-# run started must not sign, and one who joined must. A short window remains
-# between reading the reviews and the merge, because GitHub cannot make a merge
-# depend on the reviews. The branch rule that requires an approving review
-# closes it: GitHub itself refuses the merge once the approval is withdrawn. GitHub merges only if the head is still the approved
+# run started must not sign, and one who joined must.
+#
+# A short window remains between reading the reviews and the merge: GitHub
+# cannot make a merge depend on a particular review. A branch rule that
+# requires an approving review closes it only when the withdrawn sign-off was
+# the last approval; with another approval in place, the merge goes ahead and
+# the commit names a maintainer who withdrew a moment before. The sign-offs
+# are therefore read once more after the merge, and the run fails, naming
+# them, if any withdrew in that window, so that a maintainer can follow up. GitHub merges only if the head is still the approved
 # commit ("sha") and the branch rules are met, such as the required checks.
 merge() {
   : "${NUMBER:?}" "${HEAD_SHA:?}" "${DEADLINE:?}" "${MAINTAINERS_FILE:?}"
@@ -200,6 +205,7 @@ merge() {
       -f merge_method=squash -f sha="$HEAD_SHA" -f commit_title="$title (#$NUMBER)" -f commit_message="$message" \
       --jq .sha 2>&1)"; then
       note "Merged #$NUMBER as $result, signed off by ${names[*]}."
+      check_after_merge "$logins" "$result"
       return 0
     fi
     # 409: the head moved after the approval. Anything but 405 will not change by waiting.
@@ -209,6 +215,22 @@ merge() {
     echo "Waiting for the required checks: $result"
     sleep "$POLL_SECONDS"
   done
+}
+
+# Reads the sign-offs again after a merge, and fails the run, naming them, if
+# any of the maintainers named in the commit withdrew in the meantime. The
+# merge cannot be undone here; the failed run and its summary tell the
+# maintainers to look.
+check_after_merge() {
+  local signed="$1" sha="$2" now login withdrawn=""
+  now="$(signers "$NUMBER")"
+  for login in $signed; do
+    [[ " $now " == *" $login "* ]] || withdrawn+="${withdrawn:+ }$login"
+  done
+  [ -z "$withdrawn" ] && return 0
+  local text="#$NUMBER was merged as $sha with a sign-off by $withdrawn, whose sign-off was withdrawn while it merged. Check whether they still certify the change; if not, revert $sha."
+  echo "$text" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  die "$text"
 }
 
 case "${1:-}" in
