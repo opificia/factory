@@ -37,8 +37,6 @@ COPY --from=build /app /app
 ENV HOME=/home/node \
     npm_config_store_dir=/work/.pnpm-store \
     CLAUDE_CONFIG_DIR=/home/node/.claude \
-    OPIFICIA_IN_DIR=/in \
-    OPIFICIA_OUT_DIR=/out \
     OPIFICIA_WORK_DIR=/work \
     OPIFICIA_CHROMIUM=/usr/bin/chromium
 USER node

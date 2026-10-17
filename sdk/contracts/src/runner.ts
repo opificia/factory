@@ -62,7 +62,7 @@ export type RunnerHelloParams = z.infer<typeof RunnerHelloParams>;
 export const NetworkLevel = z.enum(["none", "registries", "open"]);
 export type NetworkLevel = z.infer<typeof NetworkLevel>;
 
-/** What the sandbox must do. The repository is in `/in/repo.bundle`. */
+/** What the sandbox must do. The runner downloads the repository as `repo.bundle` from the gateway. */
 export const RunnerTask = z.object({
   runId: z.uuid(),
   stage: Stage,
@@ -103,6 +103,12 @@ export const RunnerEventParams = z.discriminatedUnion("kind", [
 ]);
 export type RunnerEventParams = z.infer<typeof RunnerEventParams>;
 
+/**
+ * Names of the files a sandbox exchanges with the gateway (ADR-0010). The
+ * runner protocol and the gateway use the same rule.
+ */
+export const BUNDLE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*\.bundle$/;
+
 export const RunnerCompleteParams = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("plan_ready"),
@@ -112,8 +118,8 @@ export const RunnerCompleteParams = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("implementation_ready"),
     summary: z.string().max(100_000),
-    /** File name of the git bundle in `/out`, holding the branch. */
-    bundle: z.string().regex(/^[A-Za-z0-9._-]+\.bundle$/),
+    /** File name of the git bundle holding the branch, uploaded to the gateway before completing. */
+    bundle: z.string().regex(BUNDLE_NAME),
     headSha: z.string().regex(/^[0-9a-f]{40}$/),
     costUsd: z.number().nonnegative(),
   }),

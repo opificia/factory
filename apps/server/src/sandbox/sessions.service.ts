@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { appendFile, chmod, mkdir, stat } from "node:fs/promises";
+import { appendFile, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import {
@@ -82,8 +82,6 @@ export class SessionsService {
     const dirs = this.dirs(runId, sessionId);
     await mkdir(dirs.inDir, { recursive: true });
     await mkdir(dirs.outDir, { recursive: true });
-    // The sandbox user is not the host user; let it write its result.
-    await chmod(dirs.outDir, 0o777);
     return dirs;
   }
 
@@ -110,7 +108,7 @@ export class SessionsService {
   /** Starts the container for a session and watches it until it exits. */
   async launch(sessionId: string, token: string): Promise<void> {
     const session = await this.prisma.sandboxSession.findUniqueOrThrow({ where: { id: sessionId } });
-    const { inDir, outDir, base } = this.dirs(session.runId, session.id);
+    const { base } = this.dirs(session.runId, session.id);
     const gateway = this.docker.gatewayUrl;
     const task = RunnerTask.parse(session.task);
     const env: Record<string, string> = {
@@ -131,8 +129,6 @@ export class SessionsService {
       sessionId,
       runId: session.runId,
       image: this.config.OPIFICIA_SANDBOX_IMAGE,
-      inDir,
-      outDir,
       env,
     });
     await this.prisma.sandboxSession.update({ where: { id: sessionId }, data: { containerId } });
@@ -223,6 +219,16 @@ export class SessionsService {
     if (!session || !sameHash(session.tokenHash, hashToken(token))) return undefined;
     session.modelRequests += 1;
     return { session, overLimit: session.modelRequests > this.config.OPIFICIA_MAX_MODEL_REQUESTS };
+  }
+
+  /**
+   * Checks a runner token, for the file transfers of a session that said
+   * hello. Like the model proxy, it accepts the token after the hello.
+   */
+  authorizeRunner(token: string): ActiveSession | undefined {
+    const hash = hashToken(token);
+    for (const session of this.active.values()) if (sameHash(session.tokenHash, hash)) return session;
+    return undefined;
   }
 
   /**

@@ -85,7 +85,7 @@ async function implement(task: RunnerTask, repoDir: string, context: HarnessCont
   }
 
   const bundle = "result.bundle";
-  await bundleBranch(repoDir, task.branch, join(context.outDir, bundle));
+  await bundleBranch(repoDir, task.branch, task.repo.baseSha, join(context.outDir, bundle));
   return { outcome: "implementation_ready", summary, bundle, headSha: await headSha(repoDir), costUsd };
 }
 
