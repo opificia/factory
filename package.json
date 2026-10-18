@@ -15,6 +15,7 @@
     "dev": "pnpm --parallel --filter @opificia/server --filter @opificia/web dev",
     "db:migrate": "pnpm --filter @opificia/server db:migrate",
     "sandbox:build": "docker build -t opificia/harness-claude:dev -f plugins/harness-claude/Dockerfile .",
+    "server:build": "docker build -t opificia/server:dev -f apps/server/Dockerfile .",
     "db:deploy": "pnpm --filter @opificia/server db:deploy"
   },
   "devDependencies": {
