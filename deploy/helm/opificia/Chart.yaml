@@ -1,0 +1,16 @@
+# Helm chart for Opificia AI on any conformant Kubernetes cluster (ADR-0010).
+# It uses core resources only, and no annotations of any provider.
+apiVersion: v2
+name: opificia
+description: Opificia AI, an open-source software factory. Agents turn tickets into reviewed, tested pull requests.
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+kubeVersion: ">=1.29.0-0"
+home: https://opificia.ai
+sources:
+  - https://github.com/opificia/factory
+keywords:
+  - opificia
+  - agents
+  - software-factory

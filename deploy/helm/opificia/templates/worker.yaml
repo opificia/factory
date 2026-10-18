@@ -1,0 +1,206 @@
+# The worker: effects, the GitHub poller and the sandboxes. Exactly one, since
+# it holds the live sandbox sessions; replaced, never rolled.
+{{- $worker := dict "root" $ "component" "worker" }}
+{{- $settings := dict "nodeSelector" .Values.sandbox.nodeSelector "tolerations" .Values.sandbox.tolerations "imagePullSecrets" .Values.sandbox.imagePullSecrets "cpu" (toString .Values.sandbox.cpu) "memory" (toString .Values.sandbox.memory) "workSize" (toString .Values.sandbox.workSize) }}
+{{- with .Values.sandbox.runtimeClassName }}
+{{- $_ := set $settings "runtimeClassName" . }}
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "opificia.fullname" . }}-worker
+  labels:
+    {{- include "opificia.labels" $worker | nindent 4 }}
+---
+# What the worker may do, in its own namespace only (ADR-0010). Nothing
+# cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "opificia.fullname" . }}-worker
+  labels:
+    {{- include "opificia.labels" $worker | nindent 4 }}
+rules:
+  # One pod per sandbox stage, and the network probe.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Each sandbox's tokens, in a secret that belongs to its pod. The worker
+  # creates them and never reads any secret.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  # The address sandboxes reach the worker at.
+  - apiGroups: [""]
+    resources: ["services"]
+    resourceNames: [{{ include "opificia.sandboxService" . | quote }}]
+    verbs: ["get"]
+  # The worker checks that no policy lets sandboxes past the egress proxy.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "opificia.fullname" . }}-worker
+  labels:
+    {{- include "opificia.labels" $worker | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "opificia.fullname" . }}-worker
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opificia.fullname" . }}-worker
+    namespace: {{ .Release.Namespace }}
+---
+# Sandboxes reach the worker's sandbox port through this service, as the host
+# name "gateway". The network probe reaches it before the worker is ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opificia.sandboxService" . }}
+  labels:
+    {{- include "opificia.labels" $worker | nindent 4 }}
+spec:
+  selector:
+    {{- include "opificia.selectorLabels" $worker | nindent 4 }}
+  publishNotReadyAddresses: true
+  ports:
+    - name: sandbox
+      port: 3001
+      targetPort: sandbox
+{{- if .Values.worker.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opificia.fullname" . }}-worker
+  labels:
+    {{- include "opificia.labels" $worker | nindent 4 }}
+  annotations:
+    # Keep the caches when the release is removed; delete the claim yourself.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.worker.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.worker.persistence.size }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opificia.fullname" . }}-worker
+  labels:
+    {{- include "opificia.labels" $worker | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "opificia.selectorLabels" $worker | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opificia.labels" $worker | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "opificia.fullname" . }}-worker
+      enableServiceLinks: false
+      # Sandboxes end when their runs fail on a restart; give the worker time
+      # to record that.
+      terminationGracePeriodSeconds: 60
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        {{- include "opificia.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "opificia.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            - name: OPIFICIA_ROLE
+              value: worker
+            - name: OPIFICIA_SANDBOX_BACKEND
+              value: kubernetes
+            - name: OPIFICIA_SANDBOX_PORT
+              value: "3001"
+            - name: OPIFICIA_KUBERNETES_GATEWAY_SERVICE
+              value: {{ include "opificia.sandboxService" . }}
+            - name: OPIFICIA_SANDBOX_IMAGE
+              value: {{ required "sandbox.image is required: the sandbox image you built from plugins/harness-claude/Dockerfile" .Values.sandbox.image | quote }}
+            - name: OPIFICIA_KUBERNETES_SANDBOX_POD
+              value: {{ toJson $settings | quote }}
+            - name: OPIFICIA_MAX_SANDBOXES
+              value: {{ .Values.sandbox.maxSandboxes | quote }}
+            - name: OPIFICIA_SANDBOX_NETWORK
+              value: {{ .Values.sandbox.network | quote }}
+            - name: OPIFICIA_EGRESS_ALLOW
+              value: {{ .Values.sandbox.egressAllow | quote }}
+            - name: OPIFICIA_KUBERNETES_NETWORK_PROBE
+              value: {{ ternary "on" "off" .Values.sandbox.networkProbe | quote }}
+            {{- with .Values.sandbox.probeImage }}
+            - name: OPIFICIA_KUBERNETES_PROBE_IMAGE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- include "opificia.env" . | nindent 12 }}
+          ports:
+            - name: sandbox
+              containerPort: 3001
+          # The sandbox gateway listens before the worker checks the network,
+          # so it is up from the start. The probe takes up to a few minutes on
+          # a new node.
+          startupProbe:
+            tcpSocket:
+              port: sandbox
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket:
+              port: sandbox
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{- include "opificia.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            {{- include "opificia.volumeMounts" . | nindent 12 }}
+            - name: data
+              mountPath: /data
+      volumes:
+        {{- include "opificia.volumes" . | nindent 8 }}
+        - name: data
+          {{- if .Values.worker.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "opificia.fullname" . }}-worker
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
