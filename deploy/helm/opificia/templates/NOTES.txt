@@ -1,0 +1,19 @@
+{{- /*
+SPDX-FileCopyrightText: The Opificia Authors
+SPDX-License-Identifier: CC0-1.0
+*/ -}}
+Opificia is starting in the namespace {{ .Release.Namespace }}.
+
+Watch the worker check the sandbox network. It starts a probe on a sandbox
+node, which can take a few minutes when the pool has no nodes yet:
+
+  kubectl --namespace {{ .Release.Namespace }} logs deployment/{{ include "opificia.fullname" . }}-worker --follow
+
+Open {{ .Values.publicUrl }} once the API is ready. The GitHub App's callback
+URL must be {{ .Values.publicUrl | trimSuffix "/" }}/api/auth/callback/github.
+{{- if not .Values.ingress.enabled }}
+
+The chart has no ingress. To try it from your machine:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward service/{{ include "opificia.fullname" . }}-api 8080:80
+{{- end }}

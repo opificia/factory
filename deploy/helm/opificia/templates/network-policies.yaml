@@ -1,0 +1,54 @@
+# The sandbox network (ADR-0007, ADR-0010). Sandboxes accept no connections,
+# and may connect only to the worker's sandbox port. Everything else goes
+# through the worker's egress proxy. The worker reads the policies of its
+# namespace before the first sandbox, and refuses to start if any policy lets
+# sandboxes reach more than this; it then checks with a probe that the cluster
+# enforces it. Do not add policies that apply to sandboxes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opificia.fullname" . }}-sandbox
+  labels:
+    {{- include "opificia.labels" (dict "root" $ "component" "sandbox") | nindent 4 }}
+spec:
+  # The labels the worker gives every sandbox pod.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: opificia
+      opificia.role: sandbox
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "opificia.selectorLabels" (dict "root" $ "component" "worker") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3001
+{{- if .Values.valkey.enabled }}
+---
+# Valkey has no password, so only the API and the worker may connect to it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opificia.fullname" . }}-valkey
+  labels:
+    {{- include "opificia.labels" (dict "root" $ "component" "valkey") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opificia.selectorLabels" (dict "root" $ "component" "valkey") | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "opificia.selectorLabels" (dict "root" $ "component" "api") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "opificia.selectorLabels" (dict "root" $ "component" "worker") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6379
+{{- end }}

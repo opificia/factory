@@ -1,0 +1,81 @@
+{{- if .Values.valkey.enabled }}
+# Valkey carries live updates between the worker and the API. No persistence:
+# it holds nothing that is not also in PostgreSQL.
+{{- $valkey := dict "root" $ "component" "valkey" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opificia.fullname" . }}-valkey
+  labels:
+    {{- include "opificia.labels" $valkey | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "opificia.selectorLabels" $valkey | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opificia.labels" $valkey | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        # The valkey user of the image.
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: valkey
+          image: {{ .Values.valkey.image }}
+          command: ["valkey-server", "--save", "", "--appendonly", "no"]
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: valkey
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.valkey.resources | nindent 12 }}
+          securityContext:
+            {{- include "opificia.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+      {{- with .Values.valkey.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.valkey.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opificia.fullname" . }}-valkey
+  labels:
+    {{- include "opificia.labels" $valkey | nindent 4 }}
+spec:
+  selector:
+    {{- include "opificia.selectorLabels" $valkey | nindent 4 }}
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+{{- end }}

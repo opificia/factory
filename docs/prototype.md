@@ -4,6 +4,8 @@ This guide explains how to run the first working loop of Opificia AI on your own
 
 The prototype follows [ADR-0004](adr/0004-target-architecture.md), [ADR-0005](adr/0005-prototype-stack.md) and [ADR-0007](adr/0007-sandbox-network-policy.md). It is meant for one person working on their own repositories. Do not use it on repositories where other people can write issues you do not trust, and do not expose it to the internet. See [Limits](#limits).
 
+To run Opificia on a Kubernetes cluster, with sandboxes that scale with the work, see [`docs/kubernetes.md`](kubernetes.md).
+
 ## What you need
 
 - Node.js 24 and pnpm 12.
