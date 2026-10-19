@@ -134,7 +134,7 @@ The first probe on an empty sandbox pool waits for a node, as a run does, which 
 You can size the sandbox pool in two ways:
 
 - **Several sandboxes per node**, with larger nodes and the default settings. A sandbox starts at once on a node that has room. You pay for the whole node while any sandbox runs on it.
-- **One sandbox per node**, with nodes the size of one sandbox and `sandbox.onePerNode: true`. You pay only for the sandboxes that run, and a sandbox that escapes its container finds no other sandbox on its node. Each sandbox needs a node of its own, though, which takes a few minutes to start unless one is ready.
+- **One sandbox per node**, with nodes the size of one sandbox and `sandbox.onePerNode: true`. You pay for a node while a sandbox runs on it, for the minutes an idle node waits before the autoscaler removes it, and for any buffer below. A sandbox that escapes its container finds no other sandbox on its node. Each sandbox needs a node of its own, though, which takes a few minutes to start unless one is ready.
 
 For one sandbox per node, let a sandbox reserve less CPU than the node has, since the node's own agents reserve some, and use all of it. For nodes with 2 vCPUs and 8 GB:
 
