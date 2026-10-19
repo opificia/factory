@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { existsSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { NextFunction, Request, Response } from "express";
 
@@ -11,8 +11,9 @@ import type { NextFunction, Request, Response } from "express";
  * serve both the app and /api, as the development proxy does (ADR-0010).
  * Files under /assets carry a content hash in their names and never change;
  * everything else is checked again on every load. Any other path that is not
- * under /api or /assets gets index.html, and the app's router takes it from
- * there; a missing asset is a 404, not a page.
+ * under /api or /assets, and does not name a file, gets index.html, and the
+ * app's router takes it from there. A missing file, such as /assets/gone.js or
+ * /favicon.ico, is a 404, not a page.
  */
 export function serveWeb(app: NestExpressApplication, webDir: string): void {
   const dir = resolve(webDir);
@@ -27,7 +28,8 @@ export function serveWeb(app: NestExpressApplication, webDir: string): void {
     },
   });
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if ((req.method !== "GET" && req.method !== "HEAD") || under(req.path, "/api") || under(req.path, "/assets")) return next();
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (under(req.path, "/api") || under(req.path, "/assets") || extname(req.path) !== "") return next();
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(index, (error) => error && next(error));
   });

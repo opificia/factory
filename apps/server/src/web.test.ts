@@ -3,6 +3,7 @@
 
 import "reflect-metadata";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { get } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,13 +24,29 @@ class HealthController {
 @Module({ controllers: [HealthController] })
 class TestModule {}
 
+let root: string;
 let dir: string;
 let app: NestExpressApplication;
 let base: string;
 
+/** Sends `path` exactly as written; fetch would resolve dot segments first. */
+function getRaw(path: string): Promise<{ status: number; body: string }> {
+  return new Promise((done, fail) => {
+    get(`${base}/`, { path }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => (body += chunk));
+      response.on("end", () => done({ status: response.statusCode ?? 0, body }));
+    }).on("error", fail);
+  });
+}
+
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), "opificia-web-"));
-  await mkdir(join(dir, "assets"));
+  // The web app's folder, next to a file it must never serve.
+  root = await mkdtemp(join(tmpdir(), "opificia-web-"));
+  dir = join(root, "web");
+  await writeFile(join(root, "secret.txt"), "outside");
+  await mkdir(join(dir, "assets"), { recursive: true });
   await writeFile(join(dir, "index.html"), "<html>app</html>");
   await writeFile(join(dir, "assets", "index-abc123.js"), "console.log(1)");
   await writeFile(join(dir, "favicon.svg"), "<svg/>");
@@ -42,7 +59,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
 });
 
 describe("serveWeb", () => {
@@ -74,8 +91,9 @@ describe("serveWeb", () => {
     expect((await fetch(`${base}/api`)).status).toBe(404);
   });
 
-  it("does not answer a missing asset with the page", async () => {
+  it("does not answer a missing file with the page", async () => {
     expect((await fetch(`${base}/assets/gone.js`)).status).toBe(404);
+    expect((await fetch(`${base}/favicon.ico`)).status).toBe(404);
   });
 
   it("does not answer other methods with the page", async () => {
@@ -83,8 +101,11 @@ describe("serveWeb", () => {
   });
 
   it("does not serve files outside the folder", async () => {
-    const response = await fetch(`${base}/%2e%2e/%2e%2e/etc/passwd`);
-    expect(await response.text()).not.toContain("root:");
+    for (const path of ["/../secret.txt", "/%2e%2e/secret.txt", "/assets/%2e%2e/%2e%2e/secret.txt", "/%2e%2e%2fsecret.txt"]) {
+      const response = await getRaw(path);
+      expect(response.status, path).toBeGreaterThanOrEqual(400);
+      expect(response.body, path).not.toContain("outside");
+    }
   });
 
   it("refuses a folder without the built app", () => {
