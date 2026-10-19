@@ -5,6 +5,12 @@
 {{- with .Values.sandbox.runtimeClassName }}
 {{- $_ := set $settings "runtimeClassName" . }}
 {{- end }}
+{{- with .Values.sandbox.cpuLimit }}
+{{- $_ := set $settings "cpuLimit" (toString .) }}
+{{- end }}
+{{- if .Values.sandbox.onePerNode }}
+{{- $_ := set $settings "onePerNode" true }}
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
