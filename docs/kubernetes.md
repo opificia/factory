@@ -20,7 +20,7 @@ Sandboxes run on their own nodes. You give those nodes a label and a taint, and 
 ## What you need
 
 - A Kubernetes cluster, version 1.29 or later, whose network plugin enforces `NetworkPolicy`. The worker checks this before it starts its first sandbox, and refuses to run sandboxes otherwise.
-- Two node pools: one for the control plane, and one for sandboxes with a label, a taint and autoscaling from 0. A sandbox requests 2 CPUs and 4 GiB of memory by default, so the sandbox nodes need more than that, with room for the cluster's own agents. A sandbox's disk also comes from its node: 8 GiB for the working copy (`sandbox.workSize`) and 2 GiB for `/tmp` and its home folder. Give the sandbox nodes a system disk with room for that, times the sandboxes per node, and for the sandbox image.
+- Two node pools: one for the control plane, and one for sandboxes with a label, a taint and autoscaling from 0. A sandbox requests 2 CPUs and 4 GiB of memory by default, so the sandbox nodes need more than that, with room for the cluster's own agents. A sandbox's disk also comes from its node: 8 GiB for the working copy (`sandbox.workSize`) and 2 GiB for `/tmp` and its home folder. Give the sandbox nodes a system disk with room for that, times the sandboxes per node, and for the sandbox image. See [Sandbox nodes](#sandbox-nodes).
 - PostgreSQL 15 or later.
 - A container registry the cluster can pull from.
 - Helm 3, or `kubectl` if you render the chart once with `helm template`.
@@ -129,6 +129,29 @@ If the probe fails, the worker logs what each pod reached, and exits. The usual 
 
 The first probe on an empty sandbox pool waits for a node, as a run does, which can take several minutes.
 
+## Sandbox nodes
+
+You can size the sandbox pool in two ways:
+
+- **Several sandboxes per node**, with larger nodes and the default settings. A sandbox starts at once on a node that has room. You pay for the whole node while any sandbox runs on it.
+- **One sandbox per node**, with nodes the size of one sandbox and `sandbox.onePerNode: true`. You pay only for the sandboxes that run, and a sandbox that escapes its container finds no other sandbox on its node. Each sandbox needs a node of its own, though, which takes a few minutes to start unless one is ready.
+
+For one sandbox per node, let a sandbox reserve less CPU than the node has, since the node's own agents reserve some, and use all of it. For nodes with 2 vCPUs and 8 GB:
+
+```yaml
+sandbox:
+  cpu: 1500m
+  cpuLimit: "2"
+  memory: 4Gi
+  onePerNode: true
+  buffer:
+    sandboxes: 1
+```
+
+`sandbox.buffer.sandboxes` keeps room for that many sandboxes ready, so that a run does not wait for a node. Placeholder pods the size of a sandbox hold the room, on the sandbox image, so the node already has it. A sandbox pushes a placeholder out, and the node autoscaler adds a node for the placeholder in the background. With one sandbox per node, each placeholder holds a node of its own, which you pay for as for a running sandbox. Let the pool grow to `sandbox.maxSandboxes` plus the buffer.
+
+The placeholders have a `PriorityClass` below 0, so that sandboxes can push them out. The chart creates one at -1. A `PriorityClass` applies to the whole cluster, so if the chart may not create one, create your own and give its name in `sandbox.buffer.priorityClassName`. The node autoscaler ignores pods below its cutoff, which is -10 by default, so keep the class above it.
+
 ## Isolation
 
 On a cluster without gVisor or a similar runtime, sandboxes share the kernel of their node. The pod's security context, the dedicated sandbox nodes and the network policy limit what a sandbox can do. A process that escapes its container is still root on its node, and the cluster's own agents on that node, such as the network plugin, hold credentials that reach further. Such a cluster suits repositories whose issues you trust, such as your own, not issues from anyone on the internet. To see which agents run on a sandbox node:
@@ -137,24 +160,24 @@ On a cluster without gVisor or a similar runtime, sandboxes share the kernel of 
 kubectl get pods --all-namespaces --field-selector spec.nodeName=<node> -o wide
 ```
 
-Use `sandbox.runtimeClassName` where the cluster offers a stronger runtime, such as `gvisor` on GKE Sandbox.
+With `sandbox.onePerNode`, a process that escapes finds no other sandbox on its node, though the agents are still there. Use `sandbox.runtimeClassName` where the cluster offers a stronger runtime, such as `gvisor` on GKE Sandbox.
 
 ## Provider settings
 
 ### Scaleway Kapsule
 
-Kapsule's default network plugin, Cilium, enforces network policies. Create the cluster with two pools. The sandbox pool scales from 0, with the label and the taint of the values above. A PRO2-S node (8 vCPUs, 32 GB) holds three sandboxes, and a 100 GB system disk leaves room for their disks:
+Kapsule's default network plugin, Cilium, enforces network policies. Create the cluster with two pools. The sandbox pool scales from 0, with the label and the taint of the values above. Since Kapsule has no gVisor, give every sandbox a PRO2-XXS node (2 vCPUs, 8 GB) of its own, with the settings in [Sandbox nodes](#sandbox-nodes). A 40 GB system disk leaves room for the sandbox's disk and the sandbox image:
 
 ```sh
 scw k8s cluster create name=opificia region=fr-par cni=cilium \
   pools.0.name=control pools.0.node-type=DEV1-L pools.0.size=1 \
-  pools.1.name=sandbox pools.1.node-type=PRO2-S pools.1.size=1 pools.1.root-volume-size=100GB \
-  pools.1.autoscaling=true pools.1.min-size=0 pools.1.max-size=2 \
+  pools.1.name=sandbox pools.1.node-type=PRO2-XXS pools.1.size=1 pools.1.root-volume-size=40GB \
+  pools.1.autoscaling=true pools.1.min-size=0 pools.1.max-size=5 \
   pools.1.labels.opificia-pool=sandbox \
   pools.1.taints.0.key=opificia-pool pools.1.taints.0.value=sandbox pools.1.taints.0.effect=NoSchedule
 ```
 
-The autoscaler removes the first sandbox node once it has been idle for a while. Set `pools.1.max-size` so that `max-size` times the sandboxes per node is at least `sandbox.maxSandboxes`. Fetch the kubeconfig into its own file, so that it does not change your other contexts:
+Set `pools.1.max-size` to at least `sandbox.maxSandboxes` plus `sandbox.buffer.sandboxes`. To run several sandboxes per node instead, use a larger type, such as PRO2-S (8 vCPUs, 32 GB) for three, with a system disk for all three, and set `max-size` so that `max-size` times the sandboxes per node is at least `sandbox.maxSandboxes`. Without a buffer, the autoscaler removes the last sandbox node once it has been idle for a while. Fetch the kubeconfig into its own file, so that it does not change your other contexts:
 
 ```sh
 scw k8s kubeconfig get <cluster id> > opificia.kubeconfig
@@ -172,15 +195,17 @@ Kapsule does not offer gVisor. See [Isolation](#isolation).
 Create the cluster with Dataplane V2, which enforces network policies. For the sandbox pool, use GKE Sandbox, which runs pods under gVisor, with autoscaling from 0:
 
 ```sh
-gcloud container clusters create opificia --region europe-west1 \
+gcloud container clusters create opificia --zone europe-west1-b \
   --enable-dataplane-v2 --num-nodes 1 --machine-type e2-standard-2
-gcloud container node-pools create sandbox --cluster opificia --region europe-west1 \
+gcloud container node-pools create sandbox --cluster opificia --zone europe-west1-b \
   --sandbox type=gvisor --machine-type e2-standard-8 \
   --enable-autoscaling --min-nodes 0 --max-nodes 2 --num-nodes 0 \
   --node-labels opificia-pool=sandbox --node-taints opificia-pool=sandbox:NoSchedule
 ```
 
-Add `sandbox.runtimeClassName: gvisor` to your values. GKE adds its own taint to GKE Sandbox nodes, and the `gvisor` runtime class lets sandbox pods tolerate it.
+This is a zonal cluster. In a regional cluster, `--num-nodes` and the autoscaling limits count per zone, so the same commands start three times as many nodes.
+
+Add `sandbox.runtimeClassName: gvisor` to your values. GKE adds its own taint to GKE Sandbox nodes, and the `gvisor` runtime class lets sandbox pods tolerate it. Since gVisor keeps sandboxes apart, several can share a node; `sandbox.buffer` works here too.
 
 ### kind
 
