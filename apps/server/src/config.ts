@@ -31,6 +31,12 @@ export const EgressAllow = z
 /** The image `pnpm sandbox:build` builds. */
 export const DEFAULT_SANDBOX_IMAGE = "opificia/harness-claude:dev";
 
+/** A Kubernetes CPU quantity, such as `2`, `1.5` or `1500m`, in cores; NaN for any other form. */
+function cores(quantity: string): number {
+  const match = /^(\d+(?:\.\d+)?)(m?)$/.exec(quantity);
+  return match ? Number(match[1]) / (match[2] ? 1000 : 1) : Number.NaN;
+}
+
 /**
  * Settings for sandbox pods on Kubernetes (ADR-0010), as JSON. They let the
  * operator choose the nodes and the runtime without provider-specific code.
@@ -63,10 +69,27 @@ export const SandboxPodSettings = z
         )
         .default([]),
       imagePullSecrets: z.array(z.string()).default([]),
+      /** CPU a sandbox reserves on its node. */
       cpu: z.string().default("2"),
+      /**
+       * CPU a sandbox may use, when that is more than it reserves. On a node
+       * the size of one sandbox, the node's own agents leave less than all its
+       * CPUs to reserve, but a sandbox may still use what they leave idle.
+       */
+      cpuLimit: z.string().optional(),
+      /** Memory a sandbox reserves and may use. */
       memory: z.string().default("4Gi"),
       /** Disk for the working copy, packages and builds. */
       workSize: z.string().default("8Gi"),
+      /**
+       * Gives every sandbox a node of its own, so that a sandbox that escapes
+       * its container finds no other sandbox on its node.
+       */
+      onePerNode: z.boolean().default(false),
+    })
+    .refine((s) => !s.cpuLimit || !(cores(s.cpuLimit) < cores(s.cpu)), {
+      message: "cpuLimit must be at least cpu, or Kubernetes refuses every sandbox",
+      path: ["cpuLimit"],
     }),
   );
 export type SandboxPodSettings = z.infer<typeof SandboxPodSettings>;

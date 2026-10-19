@@ -1,0 +1,108 @@
+{{- if gt (int .Values.sandbox.buffer.sandboxes) 0 }}
+# Room for sandboxes, held by placeholder pods that a sandbox pushes out
+# (values.yaml, sandbox.buffer). The node autoscaler counts the placeholders
+# like any pod, so it keeps nodes for them.
+{{- $buffer := dict "root" $ "component" "sandbox-buffer" }}
+{{- $priorityClass := .Values.sandbox.buffer.priorityClassName | default (printf "%s-%s-sandbox-buffer" .Release.Namespace (include "opificia.fullname" .)) }}
+{{- if not .Values.sandbox.buffer.priorityClassName }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ $priorityClass }}
+  labels:
+    {{- include "opificia.labels" $buffer | nindent 4 }}
+value: -1
+globalDefault: false
+# Placeholders only wait; they never push anything out.
+preemptionPolicy: Never
+description: Placeholders for Opificia sandboxes, which sandboxes push out.
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opificia.fullname" . }}-sandbox-buffer
+  labels:
+    {{- include "opificia.labels" $buffer | nindent 4 }}
+    opificia.role: sandbox-buffer
+spec:
+  replicas: {{ int .Values.sandbox.buffer.sandboxes }}
+  # Old and new placeholders would keep each other off the nodes.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "opificia.selectorLabels" $buffer | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opificia.labels" $buffer | nindent 8 }}
+        opificia.role: sandbox-buffer
+    spec:
+      priorityClassName: {{ $priorityClass }}
+      # Nothing to stop: go at once, so that the sandbox starts.
+      terminationGracePeriodSeconds: 0
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.sandbox.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.sandbox.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.sandbox.onePerNode }}
+      # Each placeholder holds a node of its own, where no sandbox runs, from
+      # any namespace.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: opificia.role
+                    operator: In
+                    values: ["sandbox", "sandbox-buffer"]
+                  - key: app.kubernetes.io/part-of
+                    operator: In
+                    values: ["opificia"]
+              namespaceSelector: {}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      securityContext:
+        {{- include "opificia.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: placeholder
+          image: {{ required "sandbox.image is required: the sandbox image you built from plugins/harness-claude/Dockerfile" .Values.sandbox.image }}
+          command: ["node", "-e", "setInterval(() => {}, 1 << 30)"]
+          resources:
+            requests:
+              cpu: {{ .Values.sandbox.cpu | toString | quote }}
+              memory: {{ .Values.sandbox.memory | toString | quote }}
+            limits:
+              memory: {{ .Values.sandbox.memory | toString | quote }}
+          securityContext:
+            {{- include "opificia.containerSecurityContext" . | nindent 12 }}
+---
+# Placeholders talk to nothing, and nothing talks to them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opificia.fullname" . }}-sandbox-buffer
+  labels:
+    {{- include "opificia.labels" $buffer | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opificia.selectorLabels" $buffer | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+{{- end }}

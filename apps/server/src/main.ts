@@ -34,8 +34,10 @@ if (config.OPIFICIA_ROLE !== "api") {
   // The gateway listens first: preparing the backend may start a sandbox
   // that has to reach it, such as the network probe on Kubernetes.
   await app.get(SandboxGateway).listen();
-  await app.get<SandboxBackend>(SANDBOX_BACKEND).prepare();
+  // Old sandboxes go first: with one sandbox per node, the probe needs a node
+  // without one.
   await app.get(SessionsService).reconcile();
+  await app.get<SandboxBackend>(SANDBOX_BACKEND).prepare();
   app.get(OutboxWorker).start();
   app.get(PollerService).start();
 }

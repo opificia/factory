@@ -116,11 +116,32 @@ sandbox:
   #     value: sandbox
   #     effect: NoSchedule
   imagePullSecrets: []
-  # Requests and limits of each sandbox, and its disk for the working copy,
-  # which comes from the node's own disk.
+  # The CPU each sandbox reserves, and may use (cpuLimit, empty for the same);
+  # the memory it reserves and may use; and its disk for the working copy,
+  # which comes from the node's own disk. On nodes the size of one sandbox,
+  # reserve less CPU than the node has, and let it use all of it: the node's
+  # own agents reserve some too.
   cpu: "2"
+  cpuLimit: ""
   memory: 4Gi
   workSize: 8Gi
+  # Gives every sandbox a node of its own, so that a sandbox that escapes its
+  # container finds no other sandbox there. Use it where sandboxes share the
+  # node's kernel, without gVisor, with nodes the size of one sandbox.
+  onePerNode: false
+  # Room for sandboxes that the node autoscaler keeps ready, so that a run
+  # does not wait minutes for a new node. Placeholder pods the size of a
+  # sandbox hold it, on the sandbox image, which the node then has; a sandbox
+  # pushes one out, and the autoscaler adds a node for it in the background.
+  # You pay for the room as for a running sandbox.
+  buffer:
+    sandboxes: 0
+    # The placeholders' PriorityClass: below 0, so that sandboxes push them
+    # out, and not below the autoscaler's cutoff for pods it ignores, -10 by
+    # default. A PriorityClass applies to the whole cluster. Empty creates
+    # one at -1; give the name of your own if the chart may not create
+    # cluster-wide objects.
+    priorityClassName: ""
   # Before the first sandbox, the worker checks that the cluster enforces the
   # sandbox network policy (ADR-0010). Turn it off only if you have checked
   # that another way.
