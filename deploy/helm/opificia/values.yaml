@@ -1,0 +1,168 @@
+# Settings of the Opificia chart. See docs/kubernetes.md for a guide, with the
+# settings for Scaleway Kapsule, Google Kubernetes Engine and kind.
+#
+# One release per namespace: the worker refuses to start when another
+# network policy in its namespace applies to sandboxes.
+
+# The server image, built from apps/server/Dockerfile and pushed to a registry
+# of your choice. Opificia does not publish images yet. Set a tag or, better, a
+# digest.
+image:
+  repository: ""
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Secrets the nodes need to pull the server image, by name. Sandboxes have
+# their own list, under sandbox.imagePullSecrets.
+imagePullSecrets: []
+
+fullnameOverride: ""
+
+# The URL people use in the browser, such as https://opificia.example.org. The
+# GitHub App's callback URL is this URL followed by /api/auth/callback/github.
+publicUrl: ""
+
+# The Secret you create, in the release's namespace, with these keys. The chart
+# never creates or reads secrets itself.
+#   DATABASE_URL               postgresql://user:password@host:5432/opificia
+#   BETTER_AUTH_SECRET         at least 32 characters: openssl rand -base64 32
+#   GITHUB_APP_ID
+#   GITHUB_APP_CLIENT_ID
+#   GITHUB_APP_CLIENT_SECRET
+#   GITHUB_APP_PRIVATE_KEY     the App's private key, in PEM
+#   ANTHROPIC_API_KEY
+#   VALKEY_URL                 only with valkey.enabled: false, and optional then
+existingSecret: opificia
+
+# Other settings of the server, as environment variables, for the API, the
+# worker and the migrations. See .env.example for the list. The chart sets the
+# ones that depend on Kubernetes itself, and refuses them here.
+env:
+  OPIFICIA_SIGNUP: open
+  # OPIFICIA_OPERATOR_EMAILS: you@example.org
+  # OPIFICIA_GIT_AUTHOR_NAME: Opificia
+  # OPIFICIA_GIT_AUTHOR_EMAIL: 12345+opificia[bot]@users.noreply.github.com
+  # OPIFICIA_RUN_BUDGET_USD: "15"
+  # OPIFICIA_PLAN_MODEL: claude-opus-5-5
+  # OPIFICIA_IMPLEMENT_MODEL: claude-sonnet-5-5
+
+# The API serves people: the web app, the API and live updates. It keeps no
+# state of its own, so it scales out.
+api:
+  replicas: 2
+  autoscaling:
+    # Needs the cluster's metrics server, which managed clusters usually have.
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  # A LoadBalancer service is the simplest way in when the cluster has no
+  # ingress controller; its annotations are your provider's.
+  service:
+    type: ClusterIP
+    annotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# The worker performs effects, polls GitHub and runs the sandboxes. It holds
+# the live sandbox sessions, so there is exactly one.
+worker:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  # Repository caches and run files. Without persistence they are lost when the
+  # worker restarts, which costs time, not data.
+  persistence:
+    enabled: true
+    size: 20Gi
+    # Empty uses the cluster's default storage class.
+    storageClass: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Sandboxes: one pod per stage of a run, created by the worker. Give them their
+# own nodes, with a label and a taint, and let the cluster's node autoscaler
+# grow and shrink that pool.
+sandbox:
+  # The sandbox image you built from plugins/harness-claude/Dockerfile and
+  # pushed to your registry.
+  image: ""
+  # Sandboxes that may run at once. Runs above the cap wait in the queue, so a
+  # burst of issues cannot grow the cluster without bound.
+  maxSandboxes: 4
+  # What the implementation stage may reach (ADR-0007): none, registries or open.
+  network: registries
+  # Hosts allowed on top of the built-in list, comma-separated.
+  egressAllow: ""
+  # For example gvisor on GKE Sandbox. Empty uses the cluster's default runtime.
+  runtimeClassName: ""
+  nodeSelector: {}
+  #   opificia-pool: sandbox
+  tolerations: []
+  #   - key: opificia-pool
+  #     operator: Equal
+  #     value: sandbox
+  #     effect: NoSchedule
+  imagePullSecrets: []
+  # Requests and limits of each sandbox, and its disk for the working copy,
+  # which comes from the node's own disk.
+  cpu: "2"
+  memory: 4Gi
+  workSize: 8Gi
+  # Before the first sandbox, the worker checks that the cluster enforces the
+  # sandbox network policy (ADR-0010). Turn it off only if you have checked
+  # that another way.
+  networkProbe: true
+  # The image for the probe; it needs node. Empty uses the sandbox image.
+  probeImage: ""
+
+# Valkey carries live updates between the worker and the API. It holds nothing
+# that is not also in PostgreSQL, so it runs without persistence. Turn it off to
+# use your own, with VALKEY_URL in the Secret.
+valkey:
+  enabled: true
+  # valkey/valkey 9.1.2, the image of deploy/compose/docker-compose.yml.
+  image: valkey/valkey@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  nodeSelector: {}
+  tolerations: []
+
+# A Job applies the database migrations before every install and upgrade. With
+# helm template, apply it and wait for it before the rest.
+migrations:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+ingress:
+  enabled: false
+  # The ingress class of your controller, such as nginx or traefik.
+  className: ""
+  # Your controller's own settings. Live updates use server-sent events, so
+  # turn off response buffering and allow long-lived responses.
+  annotations: {}
+  # The host of publicUrl.
+  host: ""
+  # The Secret with the certificate for the host. Empty serves plain HTTP.
+  tlsSecretName: ""

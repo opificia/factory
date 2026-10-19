@@ -9,3 +9,7 @@
 apps/server/src/generated
 brand
 website
+# The web app, built into the server image, uses the mark and the fonts.
+!brand/opificia-mark.svg
+!brand/opificia-mark-reverse.svg
+!website/fonts/*.woff2

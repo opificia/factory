@@ -28,6 +28,7 @@
     "iovalkey": "^0.4.0",
     "octokit": "^5.0.5",
     "pg": "^8.23.1",
+    "prisma": "7.10.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "ws": "^8.22.0",
@@ -38,7 +39,6 @@
     "@types/dockerode": "^4.0.2",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",
-    "@types/ws": "^8.18.2",
-    "prisma": "7.10.0"
+    "@types/ws": "^8.18.2"
   }
 }

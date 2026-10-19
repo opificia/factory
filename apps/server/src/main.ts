@@ -15,6 +15,7 @@ import { PollerService } from "./github/poller.service.js";
 import { SANDBOX_BACKEND, type SandboxBackend } from "./sandbox/backend.js";
 import { SandboxGateway } from "./sandbox/gateway.server.js";
 import { SessionsService } from "./sandbox/sessions.service.js";
+import { serveWeb } from "./web.js";
 import { OutboxWorker } from "./worker/outbox.worker.js";
 
 const logger = new Logger("Opificia");
@@ -27,6 +28,7 @@ app.getHttpAdapter().getInstance().all("/api/auth/*splat", toNodeHandler(app.get
 app.useBodyParser("json", { limit: "1mb" });
 app.setGlobalPrefix("api");
 app.useGlobalFilters(new DomainErrorFilter(app.get(HttpAdapterHost).httpAdapter));
+if (config.OPIFICIA_WEB_DIR && config.OPIFICIA_ROLE !== "worker") serveWeb(app, config.OPIFICIA_WEB_DIR);
 
 if (config.OPIFICIA_ROLE !== "api") {
   // The gateway listens first: preparing the backend may start a sandbox
@@ -42,6 +44,6 @@ if (config.OPIFICIA_ROLE === "worker") {
   await app.init();
   logger.log("worker started");
 } else {
-  await app.listen(config.PORT, "127.0.0.1");
-  logger.log(`API listening on http://127.0.0.1:${config.PORT}/api (role: ${config.OPIFICIA_ROLE})`);
+  await app.listen(config.PORT, config.OPIFICIA_API_BIND);
+  logger.log(`API listening on http://${config.OPIFICIA_API_BIND}:${config.PORT}/api (role: ${config.OPIFICIA_ROLE})`);
 }

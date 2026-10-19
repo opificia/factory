@@ -1,0 +1,151 @@
+# The API: the web app, the API and live updates. Stateless, so it scales out.
+{{- $api := dict "root" $ "component" "api" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opificia.fullname" . }}-api
+  labels:
+    {{- include "opificia.labels" $api | nindent 4 }}
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "opificia.selectorLabels" $api | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opificia.labels" $api | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        {{- include "opificia.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "opificia.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            - name: OPIFICIA_ROLE
+              value: api
+            - name: PORT
+              value: "3000"
+            {{- include "opificia.env" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            {{- include "opificia.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            {{- include "opificia.volumeMounts" . | nindent 12 }}
+      volumes:
+        {{- include "opificia.volumes" . | nindent 8 }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opificia.fullname" . }}-api
+  labels:
+    {{- include "opificia.labels" $api | nindent 4 }}
+  {{- with .Values.api.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    {{- include "opificia.selectorLabels" $api | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- if .Values.api.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "opificia.fullname" . }}-api
+  labels:
+    {{- include "opificia.labels" $api | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "opificia.fullname" . }}-api
+  minReplicas: {{ .Values.api.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.api.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.api.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "opificia.fullname" . }}
+  labels:
+    {{- include "opificia.labels" $api | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- $host := required "ingress.host is required with ingress.enabled" .Values.ingress.host }}
+  {{- with .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts: [{{ $host | quote }}]
+      secretName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "opificia.fullname" . }}-api
+                port:
+                  name: http
+{{- end }}

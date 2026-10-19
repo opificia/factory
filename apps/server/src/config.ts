@@ -89,6 +89,10 @@ const Env = z.object({
   OPIFICIA_ANTHROPIC_UPSTREAM: z.url().default("https://api.anthropic.com"),
   OPIFICIA_ROLE: z.enum(["api", "worker", "all"]).default("all"),
   PORT: z.coerce.number().int().default(3000),
+  /** The address the API listens on. In a container, 0.0.0.0, so that the pod's service reaches it. */
+  OPIFICIA_API_BIND: z.string().default("127.0.0.1"),
+  /** The built web app (`apps/web/dist`). When set, the API serves it too, on the same origin. */
+  OPIFICIA_WEB_DIR: z.string().optional(),
   OPIFICIA_SANDBOX_PORT: z.coerce.number().int().default(3001),
   OPIFICIA_SANDBOX_BIND: z.string().default("0.0.0.0"),
   OPIFICIA_DATA_DIR: z.string().default(fileURLToPath(new URL("../../../.data", import.meta.url))),
