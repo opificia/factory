@@ -116,7 +116,8 @@ sandbox:
   #     value: sandbox
   #     effect: NoSchedule
   imagePullSecrets: []
-  # Requests and limits of each sandbox, and its disk for the working copy.
+  # Requests and limits of each sandbox, and its disk for the working copy,
+  # which comes from the node's own disk.
   cpu: "2"
   memory: 4Gi
   workSize: 8Gi

@@ -20,7 +20,7 @@ Sandboxes run on their own nodes. You give those nodes a label and a taint, and 
 ## What you need
 
 - A Kubernetes cluster, version 1.29 or later, whose network plugin enforces `NetworkPolicy`. The worker checks this before it starts its first sandbox, and refuses to run sandboxes otherwise.
-- Two node pools: one for the control plane, and one for sandboxes with a label, a taint and autoscaling from 0. A sandbox requests 2 CPUs and 4 GiB of memory by default, so the sandbox nodes need more than that, with room for the cluster's own agents.
+- Two node pools: one for the control plane, and one for sandboxes with a label, a taint and autoscaling from 0. A sandbox requests 2 CPUs and 4 GiB of memory by default, so the sandbox nodes need more than that, with room for the cluster's own agents. A sandbox's disk also comes from its node: 8 GiB for the working copy (`sandbox.workSize`) and 2 GiB for `/tmp` and its home folder. Give the sandbox nodes a system disk with room for that, times the sandboxes per node, and for the sandbox image.
 - PostgreSQL 15 or later.
 - A container registry the cluster can pull from.
 - Helm 3, or `kubectl` if you render the chart once with `helm template`.
@@ -143,12 +143,12 @@ Use `sandbox.runtimeClassName` where the cluster offers a stronger runtime, such
 
 ### Scaleway Kapsule
 
-Kapsule's default network plugin, Cilium, enforces network policies. Create the cluster with two pools. The sandbox pool scales from 0, with the label and the taint of the values above. A PRO2-S node (8 vCPUs, 32 GB) holds three sandboxes:
+Kapsule's default network plugin, Cilium, enforces network policies. Create the cluster with two pools. The sandbox pool scales from 0, with the label and the taint of the values above. A PRO2-S node (8 vCPUs, 32 GB) holds three sandboxes, and a 100 GB system disk leaves room for their disks:
 
 ```sh
 scw k8s cluster create name=opificia region=fr-par cni=cilium \
   pools.0.name=control pools.0.node-type=DEV1-L pools.0.size=1 \
-  pools.1.name=sandbox pools.1.node-type=PRO2-S pools.1.size=1 \
+  pools.1.name=sandbox pools.1.node-type=PRO2-S pools.1.size=1 pools.1.root-volume-size=100GB \
   pools.1.autoscaling=true pools.1.min-size=0 pools.1.max-size=2 \
   pools.1.labels.opificia-pool=sandbox \
   pools.1.taints.0.key=opificia-pool pools.1.taints.0.value=sandbox pools.1.taints.0.effect=NoSchedule
