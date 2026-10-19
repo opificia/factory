@@ -73,6 +73,25 @@ describe("sandboxPod", () => {
     expect(custom.spec.containers[0]).toMatchObject({ resources: { requests: { cpu: "1" } } });
   });
 
+  it("may use more CPU than it reserves", () => {
+    const small = sandboxPod(spec, { gatewayIp: "10.0.0.7", deadlineSeconds: 60, settings: settings('{"cpu":"1500m","cpuLimit":"2"}') });
+    expect(small.spec.containers[0]).toMatchObject({ resources: { requests: { cpu: "1500m", memory: "4Gi" }, limits: { cpu: "2", memory: "4Gi" } } });
+  });
+
+  it("shares its node with other sandboxes unless told not to", () => {
+    expect(pod.spec).not.toHaveProperty("affinity");
+    const alone = sandboxPod(spec, { gatewayIp: "10.0.0.7", deadlineSeconds: 60, settings: settings('{"onePerNode":true}') });
+    expect(alone.spec).toMatchObject({
+      affinity: {
+        podAntiAffinity: {
+          requiredDuringSchedulingIgnoredDuringExecution: [
+            { labelSelector: { matchLabels: { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" } }, topologyKey: "kubernetes.io/hostname" },
+          ],
+        },
+      },
+    });
+  });
+
   it("rejects settings it does not know", () => {
     expect(() => settings(JSON.stringify({ privileged: true }))).toThrow();
     expect(() => settings("not json")).toThrow();
@@ -94,6 +113,9 @@ describe("probePod", () => {
     expect(Object.keys(pod.metadata.labels).sort()).toEqual(Object.keys(real.metadata.labels).sort());
     expect(pod.metadata.labels).toMatchObject({ "opificia.role": "sandbox", "opificia.run": expect.stringMatching(/^[0-9a-f-]{36}$/) });
     expect(pod.spec).toMatchObject({ nodeSelector: { a: "b" }, runtimeClassName: "gvisor", hostAliases: [{ ip: "10.0.0.7" }] });
+    // Like a sandbox, it keeps a node to itself when sandboxes do.
+    const alone = probePod({ name: "p", image: "s", gatewayIp: "10.0.0.7", gatewayPort: 3001, targets: [], settings: settings('{"onePerNode":true}') });
+    expect(alone.spec).toHaveProperty("affinity.podAntiAffinity");
     expect(pod.spec.containers[0]).toMatchObject({
       command: ["node", "-e", expect.stringContaining("net.connect")],
       env: [
@@ -107,6 +129,9 @@ describe("probePod", () => {
     const pod = probePod({ name: "c", image: "s", gatewayIp: "10.0.0.7", gatewayPort: 3001, targets: [], settings: settings('{"nodeSelector":{"a":"b"}}'), control: true });
     expect(pod.metadata.labels["opificia.role"]).toBe("network-control");
     expect(pod.spec.nodeSelector).toEqual({ a: "b" });
+    // The control joins the probe on its node, so it must not keep apart from it.
+    const alone = probePod({ name: "c", image: "s", gatewayIp: "10.0.0.7", gatewayPort: 3001, targets: [], settings: settings('{"onePerNode":true}'), control: true });
+    expect(alone.spec).not.toHaveProperty("affinity");
     expect(pod.spec.containers[0]).toMatchObject({ env: [{ name: "PROBE_TARGETS", value: "[]" }] });
   });
 });

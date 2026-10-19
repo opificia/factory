@@ -63,10 +63,23 @@ export const SandboxPodSettings = z
         )
         .default([]),
       imagePullSecrets: z.array(z.string()).default([]),
+      /** CPU a sandbox reserves on its node. */
       cpu: z.string().default("2"),
+      /**
+       * CPU a sandbox may use, when that is more than it reserves. On a node
+       * the size of one sandbox, the node's own agents leave less than all its
+       * CPUs to reserve, but a sandbox may still use what they leave idle.
+       */
+      cpuLimit: z.string().optional(),
+      /** Memory a sandbox reserves and may use. */
       memory: z.string().default("4Gi"),
       /** Disk for the working copy, packages and builds. */
       workSize: z.string().default("8Gi"),
+      /**
+       * Gives every sandbox a node of its own, so that a sandbox that escapes
+       * its container finds no other sandbox on its node.
+       */
+      onePerNode: z.boolean().default(false),
     }),
   );
 export type SandboxPodSettings = z.infer<typeof SandboxPodSettings>;

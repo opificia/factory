@@ -30,6 +30,13 @@ const PER_POD_LABELS = ["opificia.run", "opificia.session"] as const;
 
 const LABELS = { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" };
 
+/** Keeps a sandbox off any node where another sandbox runs. */
+const ONE_PER_NODE = {
+  podAntiAffinity: {
+    requiredDuringSchedulingIgnoredDuringExecution: [{ labelSelector: { matchLabels: LABELS }, topologyKey: "kubernetes.io/hostname" }],
+  },
+};
+
 type Pod = {
   metadata: { name: string; uid?: string; labels?: Record<string, string> };
   spec?: { nodeName?: string };
@@ -50,12 +57,15 @@ function basePod(input: {
   deadlineSeconds: number;
 }) {
   const { settings } = input;
+  const labels = { ...LABELS, ...input.labels };
+  // Sandboxes, and the probe that stands in for one, but not the control pod.
+  const apart = settings.onePerNode && labels["opificia.role"] === LABELS["opificia.role"];
   return {
     apiVersion: "v1",
     kind: "Pod",
     metadata: {
       name: input.name,
-      labels: { ...LABELS, ...input.labels },
+      labels,
       // The Cluster Autoscaler and Karpenter must not remove a node while a run works on it.
       annotations: { "cluster-autoscaler.kubernetes.io/safe-to-evict": "false", "karpenter.sh/do-not-disrupt": "true" },
     },
@@ -71,6 +81,7 @@ function basePod(input: {
       ...(settings.runtimeClassName ? { runtimeClassName: settings.runtimeClassName } : {}),
       nodeSelector: settings.nodeSelector,
       tolerations: settings.tolerations,
+      ...(apart ? { affinity: ONE_PER_NODE } : {}),
       imagePullSecrets: settings.imagePullSecrets.map((name) => ({ name })),
       securityContext: {
         runAsNonRoot: true,
@@ -106,10 +117,10 @@ export function sandboxPod(spec: SandboxSpec, options: { gatewayIp: string; sett
     image: spec.image,
     ...options,
   });
-  const { cpu, memory, workSize } = options.settings;
+  const { cpu, cpuLimit, memory, workSize } = options.settings;
   Object.assign(pod.spec.containers[0]!, {
     envFrom: [{ secretRef: { name: pod.metadata.name } }],
-    resources: { requests: { cpu, memory }, limits: { cpu, memory } },
+    resources: { requests: { cpu, memory }, limits: { cpu: cpuLimit ?? cpu, memory } },
     volumeMounts: [
       { name: "work", mountPath: "/work" },
       { name: "tmp", mountPath: "/tmp" },
