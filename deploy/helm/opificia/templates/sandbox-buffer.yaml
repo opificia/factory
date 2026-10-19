@@ -62,7 +62,8 @@ spec:
         {{- end }}
       {{- end }}
       {{- if .Values.sandbox.onePerNode }}
-      # Each placeholder holds a node of its own, where no sandbox runs.
+      # Each placeholder holds a node of its own, where no sandbox runs, from
+      # any namespace.
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -74,6 +75,7 @@ spec:
                   - key: app.kubernetes.io/part-of
                     operator: In
                     values: ["opificia"]
+              namespaceSelector: {}
               topologyKey: kubernetes.io/hostname
       {{- end }}
       securityContext:

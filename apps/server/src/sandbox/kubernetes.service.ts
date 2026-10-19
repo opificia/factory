@@ -30,10 +30,15 @@ const PER_POD_LABELS = ["opificia.run", "opificia.session"] as const;
 
 const LABELS = { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" };
 
-/** Keeps a sandbox off any node where another sandbox runs. */
+/**
+ * Keeps a sandbox off any node where another sandbox runs, in any namespace:
+ * another installation's sandboxes may share the pool.
+ */
 const ONE_PER_NODE = {
   podAntiAffinity: {
-    requiredDuringSchedulingIgnoredDuringExecution: [{ labelSelector: { matchLabels: LABELS }, topologyKey: "kubernetes.io/hostname" }],
+    requiredDuringSchedulingIgnoredDuringExecution: [
+      { labelSelector: { matchLabels: LABELS }, namespaceSelector: {}, topologyKey: "kubernetes.io/hostname" },
+    ],
   },
 };
 

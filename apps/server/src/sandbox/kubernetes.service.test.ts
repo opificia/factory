@@ -85,7 +85,12 @@ describe("sandboxPod", () => {
       affinity: {
         podAntiAffinity: {
           requiredDuringSchedulingIgnoredDuringExecution: [
-            { labelSelector: { matchLabels: { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" } }, topologyKey: "kubernetes.io/hostname" },
+            {
+              labelSelector: { matchLabels: { "app.kubernetes.io/part-of": "opificia", "opificia.role": "sandbox" } },
+              // Every namespace, not only the pod's own.
+              namespaceSelector: {},
+              topologyKey: "kubernetes.io/hostname",
+            },
           ],
         },
       },
