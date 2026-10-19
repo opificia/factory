@@ -31,6 +31,12 @@ export const EgressAllow = z
 /** The image `pnpm sandbox:build` builds. */
 export const DEFAULT_SANDBOX_IMAGE = "opificia/harness-claude:dev";
 
+/** A Kubernetes CPU quantity, such as `2`, `1.5` or `1500m`, in cores; NaN for any other form. */
+function cores(quantity: string): number {
+  const match = /^(\d+(?:\.\d+)?)(m?)$/.exec(quantity);
+  return match ? Number(match[1]) / (match[2] ? 1000 : 1) : Number.NaN;
+}
+
 /**
  * Settings for sandbox pods on Kubernetes (ADR-0010), as JSON. They let the
  * operator choose the nodes and the runtime without provider-specific code.
@@ -80,6 +86,10 @@ export const SandboxPodSettings = z
        * its container finds no other sandbox on its node.
        */
       onePerNode: z.boolean().default(false),
+    })
+    .refine((s) => !s.cpuLimit || !(cores(s.cpuLimit) < cores(s.cpu)), {
+      message: "cpuLimit must be at least cpu, or Kubernetes refuses every sandbox",
+      path: ["cpuLimit"],
     }),
   );
 export type SandboxPodSettings = z.infer<typeof SandboxPodSettings>;

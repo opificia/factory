@@ -97,6 +97,12 @@ describe("sandboxPod", () => {
     });
   });
 
+  it("refuses a CPU limit below what it reserves", () => {
+    expect(() => settings('{"cpu":"2","cpuLimit":"1500m"}')).toThrow(/cpuLimit must be at least cpu/);
+    expect(() => settings('{"cpu":"1500m","cpuLimit":"1.5"}')).not.toThrow();
+    expect(() => settings('{"cpu":"500m","cpuLimit":"1"}')).not.toThrow();
+  });
+
   it("rejects settings it does not know", () => {
     expect(() => settings(JSON.stringify({ privileged: true }))).toThrow();
     expect(() => settings("not json")).toThrow();
